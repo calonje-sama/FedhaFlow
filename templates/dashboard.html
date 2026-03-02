@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+    <title>FedhaFlow Dashboard</title>
+</head>
+<body>
+    <h1>Payments Dashboard</h1>
+    <a href="{{ url_for('menu') }}">Go to Menu</a>
+    <table border="1" cellpadding="5" cellspacing="0">
+        <tr>
+            <th>ID</th>
+            <th>Phone</th>
+            <th>Amount</th>
+            <th>Method</th>
+            <th>Status</th>
+        </tr>
+        {% for p in payments %}
+        <tr>
+            <td>{{ p.id }}</td>
+            <td>{{ p.phone }}</td>
+            <td>{{ p.amount }}</td>
+            <td>{{ p.method }}</td>
+            <td>{{ p.status }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
