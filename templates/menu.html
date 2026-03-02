@@ -2,11 +2,17 @@
 <html>
 <head>
     <title>FedhaFlow Menu</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .menu-item { margin-bottom: 10px; }
+        #total { font-weight: bold; margin-top: 10px; }
+        button { margin-top: 10px; padding: 10px 20px; }
+    </style>
 </head>
 <body>
     <h1>Menu</h1>
     <a href="{{ url_for('dashboard') }}">Go to Dashboard</a>
-    <form method="POST" action="{{ url_for('checkout') }}">
+    <form method="POST" action="{{ url_for('checkout') }}" id="menuForm">
         <label>Phone Number:</label>
         <input type="text" name="phone" placeholder="0712345678" required><br><br>
 
@@ -17,10 +23,32 @@
         </select><br><br>
 
         {% for item in menu_items %}
-            <input type="checkbox" name="items" value="{{ item.id }}"> {{ item.name }} - KES {{ item.price }}<br>
+        <div class="menu-item">
+            <input type="checkbox" name="items" value="{{ item.id }}" data-price="{{ item.price }}">
+            {{ item.name }} - KES {{ item.price }}
+        </div>
         {% endfor %}
 
-        <br><button type="submit">Checkout</button>
+        <div id="total">Total: KES 0</div>
+
+        <button type="submit">Checkout</button>
     </form>
+
+    <script>
+        const checkboxes = document.querySelectorAll('input[name="items"]');
+        const totalDiv = document.getElementById('total');
+
+        function updateTotal() {
+            let total = 0;
+            checkboxes.forEach(cb => {
+                if(cb.checked) {
+                    total += parseFloat(cb.dataset.price);
+                }
+            });
+            totalDiv.textContent = "Total: KES " + total;
+        }
+
+        checkboxes.forEach(cb => cb.addEventListener('change', updateTotal));
+    </script>
 </body>
 </html>
