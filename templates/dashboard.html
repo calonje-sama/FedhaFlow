@@ -1,28 +1,114 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>FedhaFlow Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .main-container, .table{
+            max-width: 800px;
+        }
+        .status-pending { 
+            background-color: #fff3cd; 
+        }   
+        .status-confirmed { 
+            background-color: #d4edda; 
+        } 
+        .status-failed { 
+            background-color: #f8d7da; 
+        }  
+        .flash-message { 
+            position: fixed;
+            top: 10%;
+            left: 50%;
+            transform: translate(-50%, -50%); /* centers horizontally & vertically */
+            z-index: 1000;
+            width: 90%;         /* responsive width */
+            max-width: 300px;   /* don’t get too wide on large screens */
+            text-align: center;
+        }.flash-message .btn-close {
+            position: absolute;
+            right: 10px;
+        }
+        .flash-message .alert {
+            padding-right: 3rem;  /* creates space for close button */
+        }
+        td, th{
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-    <h1>Payments Dashboard</h1>
-    <a href="{{ url_for('menu') }}">Go to Menu</a>
-    <table border="1" cellpadding="5" cellspacing="0">
-        <tr>
-            <th>ID</th>
-            <th>Phone</th>
-            <th>Amount</th>
-            <th>Method</th>
-            <th>Status</th>
-        </tr>
-        {% for p in payments %}
-        <tr>
-            <td>{{ p.id }}</td>
-            <td>{{ p.phone }}</td>
-            <td>{{ p.amount }}</td>
-            <td>{{ p.method }}</td>
-            <td>{{ p.status }}</td>
-        </tr>
+<div class="main-container py-2 m-auto px-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <a href="{{ url_for('home') }}" class="btn btn-secondary">Back</a>
+        <a href="{{ url_for('menu') }}" class="btn btn-primary">Menu</a>
+    </div>
+    <h1 class="text-center">Payments Dashboard</h1>
+
+    <!-- Total Sales -->
+    {% set total_sales = payments | selectattr('status','equalto','Confirmed') | map(attribute='amount') | sum %}
+    <div class="alert alert-info text-center">Total Sales (Confirmed): KES {{ total_sales }}</div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-message">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'success' if category=='success' else 'warning' }}">{{ message }}
+            <button type="button" class="btn-close ms-2" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
         {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <table class="table table-striped table-bordered">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Phone</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in payments %}
+            <tr class="status-{{ p.status | lower }}">
+                <td>{{ p.id }}</td>
+                <td>
+                    {% if p.method == "Cash" %}
+                        —
+                    {% else %}
+                        {{ p.phone }}
+                    {% endif %}
+                </td>
+                <td>{{ p.amount }}</td>
+                <td>
+                    {% if p.method == "Cash" %}
+                        <span class="badge bg-secondary">Cash</span>
+                    {% else %}
+                        <span class="badge bg-success">M-Pesa</span>
+                    {% endif %}
+                </td>
+                <td>{{ p.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
     </table>
+</div>
+
+<!-- Bootstrap JS & dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Auto-fade flash messages after 5 seconds
+    setTimeout(() => {
+        const flashes = document.querySelectorAll('.flash-message .alert');
+        flashes.forEach(f => f.style.display = 'none');
+    }, 5000);
+</script>
 </body>
 </html>

@@ -1,54 +1,265 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>FedhaFlow Menu</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .menu-item { margin-bottom: 10px; }
-        #total { font-weight: bold; margin-top: 10px; }
-        button { margin-top: 10px; padding: 10px 20px; }
+        .main-container{
+            max-width: 800px;
+        }
+        .menu-card { 
+            margin-bottom: 10px; 
+        }
+        .quantity-input { 
+            width: 60px; 
+            text-align: center; 
+            display: inline-block; 
+        }
+        #total { 
+            font-weight: bold; 
+            margin-top: 20px; 
+            text-align: center;
+            font-size: 30px;
+        }
+        .menu-card img {
+            width: 100%;          /* make image fill card width */
+            height: 100px;        /* fixed height for all images */
+            object-fit: cover;    /* crop/scale without distortion */
+        }
+        #menuForm input[readonly] {
+            background-color: #BCB8B1;
+            cursor: not-allowed;
+        } 
+        button:disabled {
+            cursor: not-allowed !important;
+            opacity: 0.6;
+            pointer-events: all !important; /* allow cursor change */
+        }        
+        .menu-card {
+            height: 100%;
+        }
+        [class^="col-"]{
+            margin-bottom: 10px;
+        }
+        #menuForm .form-label {
+            min-width: 40%; 
+            max-width: max-content;
+            margin-right: 10px;
+        }
+        .disabled-lock-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: not-allowed;
+            z-index: 2;
+            background-color: rgba(255, 255, 255, 0); /* fully transparent */
+        }
+        #centerToast {
+            width: 350px;          /* fixed width */
+            max-width: 90%;        /* responsive on small screens */
+            text-align: center;
+        }
     </style>
 </head>
 <body>
-    <h1>Menu</h1>
-    <a href="{{ url_for('dashboard') }}">Go to Dashboard</a>
+<div class="main-container mt-2 mb-5 m-auto px-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <a href="{{ url_for('home') }}" class="btn btn-secondary">Back</a>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-primary">Dashboard</a>
+    </div>
+    <h1 class="text-center mb-3">Menu</h1>
     <form method="POST" action="{{ url_for('checkout') }}" id="menuForm">
-        <label>Phone Number:</label>
-        <input type="text" name="phone" placeholder="0712345678" required><br><br>
-
-        <label>Select Payment Method:</label>
-        <select name="method">
-            <option value="Cash">Cash</option>
-            <option value="M-Pesa">M-Pesa</option>
-        </select><br><br>
-
-        {% for item in menu_items %}
-        <div class="menu-item">
-            <input type="checkbox" name="items" value="{{ item.id }}" data-price="{{ item.price }}">
-            {{ item.name }} - KES {{ item.price }}
+        <div class="col-12 mb-3 d-flex align-items-center">
+            <label class="form-label">Payment Method:</label>
+            <select name="method" id="paymentMethod" class="form-select mb-2">
+                <option value="Cash">Cash</option>
+                <option value="M-Pesa">M-Pesa</option>
+            </select>
         </div>
-        {% endfor %}
+
+        <div class="col-12 mb-3 d-flex align-items-center">
+            <label class="form-label">Phone Number:</label>
+            <div class="text-center w-100">
+                <input type="text" name="phone" class="form-control numberInput" id="phoneInput" placeholder="eg. 0712345678..." required>
+                <small id="phoneError" class="text-danger d-none">
+                    Phone number is required for M-Pesa payments only!
+                </small>
+            </div>
+        </div>
+
+        <div class="row">
+            {% for item in menu_items %}
+            <div class="col-6 col-md-4">
+                <div class="card menu-card">
+                    <img src="{{ item.image_url }}" class="card-img-top" alt="{{ item.name }}">
+                    <div class="card-body text-center p-1">
+                        <h5 class="card-title">{{ item.name }}</h5>
+                        <p class="card-text mb-1">KES {{ item.price }}</p>
+                        <div class="d-flex justify-content-center align-items-center mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary minus-btn">-</button>
+                            <input type="number" name="qty_{{ item.id }}" class="quantity-input mx-1" value="0" data-price="{{ item.price }}">
+                            <button type="button" class="btn btn-sm btn-outline-secondary plus-btn">+</button>
+                        </div>
+                        <input type="checkbox" name="items" class="form-check-input item-checkbox" value="{{ item.id }}">
+                        <label class="form-check-label">Add</label>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
 
         <div id="total">Total: KES 0</div>
-
-        <button type="submit">Checkout</button>
+        <div id="checkoutWrapper" class="d-flex justify-content-center align-items-center mt-3" style="position: relative;">
+            <button type="submit" class="btn btn-lg btn-primary" id="checkoutBtn" disabled>Checkout</button>
+            <div class="disabled-lock-overlay" id="totalOverlay"></div>
+        </div>
     </form>
 
-    <script>
-        const checkboxes = document.querySelectorAll('input[name="items"]');
-        const totalDiv = document.getElementById('total');
+    <!-- toast to select item -->
+     <div id="centerToast" 
+        class="position-fixed top-50 start-50 translate-middle bg-dark text-white px-4 py-2 rounded shadow d-none"
+        style="z-index: 2000;">
+        Please select at least one item before checkout.
+    </div>
+</div>
 
-        function updateTotal() {
-            let total = 0;
-            checkboxes.forEach(cb => {
-                if(cb.checked) {
-                    total += parseFloat(cb.dataset.price);
-                }
-            });
-            totalDiv.textContent = "Total: KES " + total;
+<!-- Bootstrap JS & dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+$(function() {
+    function restrictInput(e) {
+    const input = e.target;
+    let value = input.value;
+
+    // Remove invalid characters (anything except digits, +, .)
+    value = value.replace(/[^0-9+\.]/g, "");
+
+    // Allow only 1 +
+    const plusCount = (value.match(/\+/g) || []).length;
+    if (plusCount > 1) {
+        // Remove extra +
+        let firstIndex = value.indexOf("+");
+        value = value.slice(0, firstIndex + 1) + value.slice(firstIndex + 1).replace(/\+/g, "");
+    }
+
+    // Allow only 1 .
+    const dotCount = (value.match(/\./g) || []).length;
+    if (dotCount > 1) {
+        let firstIndex = value.indexOf(".");
+        value = value.slice(0, firstIndex + 1) + value.slice(firstIndex + 1).replace(/\./g, "");
+    }
+
+    // Update the input value
+    input.value = value;
+}
+$('.numberInput').on('input', restrictInput);
+
+const checkboxes = document.querySelectorAll('.item-checkbox');
+const quantities = document.querySelectorAll('.quantity-input');
+const totalDiv = document.getElementById('total');
+const plusButtons = document.querySelectorAll('.plus-btn');
+const minusButtons = document.querySelectorAll('.minus-btn');
+
+// Event listeners for checkbox changes
+checkboxes.forEach((cb, i) => cb.addEventListener('change', updateTotal));
+
+// Event listeners for quantity buttons
+plusButtons.forEach((btn, i) => {
+    btn.addEventListener('click', () => {
+        quantities[i].value = parseInt(quantities[i]?.value) + 1 || 1;
+        checkboxes[i].checked = true;
+        updateTotal();
+    });
+});
+minusButtons.forEach((btn, i) => {
+    btn.addEventListener('click', () => {
+        if(parseInt(quantities[i].value) > 0) quantities[i].value = parseInt(quantities[i]?.value) - 1 || 0;
+        if(quantities[i].value == 0) checkboxes[i].checked = false;
+        updateTotal();
+    });
+});
+
+// Select the checkout button
+const checkoutBtn = document.getElementById('checkoutBtn');
+
+function updateCheckoutState() {
+    let enable = false;
+    quantities.forEach((q, i) => {
+        if (parseInt(q.value) > 0 && checkboxes[i].checked) {
+            enable = true;
         }
+    });
+    checkoutBtn.disabled = !enable;
+    if (!enable) {
+        $('#totalOverlay').addClass('d-none');
+    }else{
+        $('#totalOverlay').removeClass('d-none');
+    }
+}
 
-        checkboxes.forEach(cb => cb.addEventListener('change', updateTotal));
-    </script>
+function updateTotal() {
+    let total = 0;
+    checkboxes.forEach((cb, i) => {
+        if(cb.checked) {
+            const qty = parseInt(quantities[i].value) || 0;
+            total += parseFloat(quantities[i].dataset.price) * qty;
+        }
+    });
+    totalDiv.textContent = "Total: KES " + total;
+    updateCheckoutState();  // <-- update checkout button state
+}
+
+const paymentMethod = document.getElementById("paymentMethod");
+const phoneInput = document.getElementById("phoneInput");
+const phoneError = document.getElementById("phoneError");
+
+function togglePhoneRequirement() {
+    phoneError.classList.add("d-none");
+    if (paymentMethod.value === "M-Pesa") {
+        phoneInput.required = true;
+        phoneInput.readOnly = false;
+    } else {
+        phoneInput.required = false;
+        phoneInput.value = "";   // optional: clear it
+        phoneInput.readOnly = true; // optional: disable for cash
+    }
+}
+
+// Run on page load
+togglePhoneRequirement();
+
+paymentMethod.addEventListener("change", togglePhoneRequirement);
+
+phoneInput.addEventListener("click", function () {
+    if (phoneInput.readOnly) {
+        phoneError.classList.remove("d-none");
+        setTimeout(() => {
+            phoneError.classList.add("d-none");
+        }, 3500);
+    } else {
+        phoneError.classList.add("d-none");
+    }
+});
+
+const checkoutWrapper = document.getElementById("checkoutWrapper");
+const centerToast = document.getElementById("centerToast");
+
+checkoutWrapper.addEventListener("click", function () {
+    console.log('here')
+    if (checkoutBtn.disabled) {
+        centerToast.classList.remove("d-none");       
+        setTimeout(() => {
+            centerToast.classList.add("d-none");
+        }, 3500); 
+    }
+});
+});
+</script>
 </body>
 </html>

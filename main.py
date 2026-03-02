@@ -29,6 +29,7 @@ class MenuItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     price = db.Column(db.Float, nullable=False)
+    image_url = db.Column(db.String(300))  # path to static image
 
 class Payment(db.Model):
     __tablename__ = 'payments'
@@ -42,6 +43,10 @@ class Payment(db.Model):
 # Routes
 # ---------------------------
 @app.route('/')
+def home():
+    return render_template("index.html")
+
+@app.route('/dashboard')
 def dashboard():
     payments = Payment.query.order_by(Payment.id.desc()).all()
     return render_template("dashboard.html", payments=payments)
@@ -54,19 +59,33 @@ def menu():
 @app.route('/checkout', methods=['POST'])
 def checkout():
     selected_item_ids = request.form.getlist('items')  # list of ids as strings
+    method = request.form.get("method")
+    phone = request.form.get("phone") if method == "M-Pesa" else None
+
     if not selected_item_ids:
         flash("No items selected!", "warning")
         return redirect(url_for('menu'))
 
-    # Calculate total
-    menu_items = MenuItem.query.filter(MenuItem.id.in_(selected_item_ids)).all()
-    total = sum(item.price for item in menu_items)
+    if method == "M-Pesa" and not phone:
+        flash("Phone number is required for M-Pesa payments.", "warning")
+        return redirect(url_for('menu'))
+
+    total = 0
+    for item_id in selected_item_ids:
+        item = MenuItem.query.get(int(item_id))
+        qty = int(request.form.get(f'qty_{item_id}', 0))  # get quantity for this item
+        if qty > 0:
+            total += item.price * qty
+
+    if total == 0:
+        flash("You must select at least one item quantity greater than 0!", "warning")
+        return redirect(url_for('menu'))
 
     # Save payment to DB
     payment = Payment(
-        phone=request.form.get("phone", "Unknown"),
+        phone=phone,
         amount=total,
-        method=request.form.get("method", "Cash"),
+        method=method,
         status="Pending"
     )
     db.session.add(payment)
@@ -81,14 +100,18 @@ def checkout():
 def seed_menu():
     if MenuItem.query.count() == 0:
         items = [
-            MenuItem(name="Tea", price=20),
-            MenuItem(name="Chapati", price=15),
-            MenuItem(name="Rice", price=50),
-            MenuItem(name="Beef", price=120),
+            MenuItem(name="Smokies", price=40, image_url="/static/images/smokies.jpg"),
+            MenuItem(name="Chapati", price=25, image_url="/static/images/chapati.jpg"),
+            MenuItem(name="Kachumbari", price=5, image_url="/static/images/kachumbari.jpg"),
+            MenuItem(name="Smocha (smokies)", price=70, image_url="/static/images/smocha.jpg"),
+            MenuItem(name="Smocha (sausage)", price=80, image_url="/static/images/smocha.jpg"),
+            MenuItem(name="Sausage", price=50, image_url="/static/images/sausage.png"),
+            MenuItem(name="Hotdog (sausage)", price=100, image_url="/static/images/hotdog.jpg"),
+            MenuItem(name="Hotdog (smokies)", price=80, image_url="/static/images/hotdog.jpg"),
+            MenuItem(name="Buns", price=25, image_url="/static/images/buns.jpg"),
         ]
         db.session.bulk_save_objects(items)
         db.session.commit()
-        print("Seeded initial menu items.")
 
 # ---------------------------
 # Run App
