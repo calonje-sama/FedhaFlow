@@ -113,6 +113,17 @@ def seed_menu():
         db.session.bulk_save_objects(items)
         db.session.commit()
 
+@app.template_filter('format_currency')
+def format_currency(value):
+    try:
+        if value is None:
+            return "0"
+        num = round(float(value), 2)
+        if num.is_integer():
+            return "{:,.0f}".format(num)
+        return "{:,.2f}".format(num)
+    except:
+        return value
 # ---------------------------
 # Run App
 # ---------------------------

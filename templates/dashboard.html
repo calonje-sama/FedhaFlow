@@ -86,7 +86,7 @@
                         {{ p.phone }}
                     {% endif %}
                 </td>
-                <td>{{ p.amount }}</td>
+                <td>{{ p.amount|format_currency }}</td>
                 <td>
                     {% if p.method == "Cash" %}
                         <span class="badge bg-secondary">Cash</span>
