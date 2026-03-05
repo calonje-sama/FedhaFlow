@@ -264,22 +264,6 @@ $('#orderModal').modal('show');
         }
     });
 
-$('#menuForm').on('submit', function(e) {
-    const checkoutBtn = $('#checkoutBtn');
-
-    if (checkoutBtn.prop('disabled')) {
-        // If already disabled, prevent double submission
-        e.preventDefault();
-        return false;
-    }
-
-    // Disable the button immediately
-    checkoutBtn.prop('disabled', true);
-    checkoutBtn.text('Processing...'); // optional: show feedback
-});
-$('#menuForm').on('invalid', function() {
-    $('#checkoutBtn').prop('disabled', false).text('Checkout');
-});
 </script>
 </body>
 </html>
