@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <style>
         .main-container, .table{
             max-width: 800px;
@@ -38,6 +39,19 @@
         td, th{
             text-align: center;
         }
+        .payment-row{
+            cursor:pointer;
+        }
+        .payment-row:hover{
+            background-color:#f1f1f1;
+        }
+        .table{
+            margin:auto;
+        }
+        .modal .modal-dialog{
+            max-width: 400px;
+            margin: auto;
+        }
     </style>
 </head>
 <body>
@@ -50,7 +64,9 @@
 
     <!-- Total Sales -->
     {% set total_sales = payments | selectattr('status','equalto','Confirmed') | map(attribute='amount') | sum %}
-    <div class="alert alert-info text-center">Total Sales (Confirmed): KES {{ total_sales }}</div>
+    <div class="alert alert-info text-center">
+        Total Sales (Confirmed): KES <span id="total-sales">{{ total_sales }}</span>
+    </div>
 
     <!-- Flash messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -75,9 +91,21 @@
                 <th>Status</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="payments-table">
             {% for p in payments %}
-            <tr class="status-{{ p.status | lower }}">
+            <tr class="status-{{ p.status | lower }} payment-row"
+                data-id="{{ p.id }}"
+                data-phone="{{ p.phone }}"
+                data-amount="{{ p.amount|format_currency }}"
+                data-method="{{ p.method }}"
+                data-status="{{ p.status }}"
+                data-items='[
+                    {% for item in p.order_items %}
+                    {"name":"{{ item.menu_item.name }}","qty":{{ item.quantity }},"price":{{ item.price }}}
+                    {% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ]'
+            >
                 <td>{{ p.id }}</td>
                 <td>
                     {% if p.method == "Cash" %}
@@ -101,14 +129,157 @@
     </table>
 </div>
 
+<!-- Order Details Modal -->
+<div class="modal fade" id="orderModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Order Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <p><strong>ID:</strong> <span id="modal-id"></span></p>
+        <p><strong>Phone:</strong> <span id="modal-phone"></span></p>
+        <p><strong>Method:</strong> <span id="modal-method"></span></p>
+        <p><strong>Status:</strong> <span id="modal-status"></span></p>
+
+        <hr>
+
+        <h6>Items</h6>
+
+        <ul id="modal-items" class="list-group mb-3"></ul>
+
+        <h5 class="text-end">
+            Total: KES <span id="modal-total"></span>
+        </h5>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- Bootstrap JS & dependencies -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
     // Auto-fade flash messages after 5 seconds
     setTimeout(() => {
         const flashes = document.querySelectorAll('.flash-message .alert');
         flashes.forEach(f => f.style.display = 'none');
     }, 5000);
+
+    $(document).off('click',".payment-row").on('click',".payment-row", function(){
+        const id = this.dataset.id;
+        const phone = this.dataset.phone || "—";
+        const method = this.dataset.method;
+        const status = this.dataset.status;
+        const amount = this.dataset.amount;
+        const items = JSON.parse(this.dataset.items);
+
+        document.getElementById("modal-id").innerText = id;
+        document.getElementById("modal-phone").innerText = phone;
+        document.getElementById("modal-method").innerText = method;
+        document.getElementById("modal-status").innerText = status;
+        document.getElementById("modal-total").innerText = amount;
+
+        const list = document.getElementById("modal-items");
+        list.innerHTML = "";
+
+        items.forEach(item => {
+            const li = document.createElement("li");
+            li.className = "list-group-item d-flex justify-content-between";
+            li.innerHTML = `
+                <span>${item.qty} × ${item.name}</span>
+                <span>KES ${item.price}</span>
+            `;
+            list.appendChild(li);
+        });
+
+        // Proper Bootstrap JS to show modal
+$('#orderModal').modal('show');
+    });
+
+    // Connect to Socket.IO server
+    const socket = io();
+
+    // Listen for payment updates
+    socket.on('payment_update', (p) => {
+        const table = document.getElementById("payments-table");
+
+        // Check if row exists
+        let row = document.querySelector(`tr[data-id='${p.id}']`);
+        if(!row){
+            // Create new row
+            let rowClass = "status-" + p.status.toLowerCase();
+            let methodBadge =
+                p.method === "Cash"
+                ? '<span class="badge bg-secondary">Cash</span>'
+                : '<span class="badge bg-success">M-Pesa</span>';
+
+            let phone = p.method === "Cash" ? "—" : p.phone;
+
+            row = document.createElement("tr");
+            row.className = rowClass + " payment-row";
+            row.dataset.id = p.id;
+            row.dataset.phone = p.phone;
+            row.dataset.amount = p.amount;
+            row.dataset.method = p.method;
+            row.dataset.status = p.status;
+            row.dataset.items = JSON.stringify(p.items);
+
+            row.innerHTML = `
+                <td>${p.id}</td>
+                <td>${phone}</td>
+                <td>${p.amount}</td>
+                <td>${methodBadge}</td>
+                <td>${p.status}</td>
+            `;
+            table.prepend(row); // newest first
+        } else {
+            // Update existing row status, amount, etc.
+            row.dataset.status = p.status;
+            row.dataset.amount = p.amount;
+            row.dataset.items = JSON.stringify(p.items);
+            row.className = "status-" + p.status.toLowerCase() + " payment-row";
+            row.cells[2].innerText = p.amount;
+            row.cells[4].innerText = p.status;
+
+            let methodBadge =
+                p.method === "Cash"
+                ? '<span class="badge bg-secondary">Cash</span>'
+                : '<span class="badge bg-success">M-Pesa</span>';
+            row.cells[3].innerHTML = methodBadge;
+        }
+
+        // Update total sales if payment is confirmed
+        let totalElem = document.getElementById("total-sales");
+        let currentTotal = parseFloat(totalElem.innerText.replace(/,/g,''));
+        if(p.status === "Confirmed"){
+            currentTotal += parseFloat(p.amount);
+            totalElem.innerText = currentTotal.toLocaleString();
+        }
+    });
+
+$('#menuForm').on('submit', function(e) {
+    const checkoutBtn = $('#checkoutBtn');
+
+    if (checkoutBtn.prop('disabled')) {
+        // If already disabled, prevent double submission
+        e.preventDefault();
+        return false;
+    }
+
+    // Disable the button immediately
+    checkoutBtn.prop('disabled', true);
+    checkoutBtn.text('Processing...'); // optional: show feedback
+});
+$('#menuForm').on('invalid', function() {
+    $('#checkoutBtn').prop('disabled', false).text('Checkout');
+});
 </script>
 </body>
 </html>
