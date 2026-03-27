@@ -1,30 +1,24 @@
 FedhaFlow
 
-FedhaFlow is a web-based sales and payment management system designed to help small businesses track M-Pesa and cash transactions efficiently.
+FedhaFlow is a web-based sales and payment management system designed to help small businesses manage sales, track transactions, and handle both cash and M-Pesa payments in one system
 
-Features (Planned)
+Implemented:
 
 Menu-based POS system
 
-M-Pesa STK Push integration
+Cash transaction tracking
 
-Real-time transaction tracking
+Sales dashboard (basic)
 
-Sales dashboard
+Database integration (Supabase/PostgreSQL)
 
-PDF sales report generation
+In Progress:
 
-Cash & digital payment recording
+M-Pesa STK Push integration (Daraja API – sandbox)
 
-Tech Stack
+UI/UX improvements for production readiness
 
-Flask (Backend)
-
-JavaScript (Frontend)
-
-MySQL / PostgreSQL
-
-M-Pesa Daraja API
+PDF sales reporting enhancements
 
 Status
 
