@@ -155,7 +155,13 @@
         <h5 class="text-end">
             Total: KES <span id="modal-total"></span>
         </h5>
-
+        <!-- Resend STK Push Button -->
+        <div id="modal-resend-wrapper" class="text-center mt-3 d-none">
+            <a id="modal-resend-btn" href="#" class="btn btn-warning btn-sm">
+                🔁 Resend STK Push
+            </a>
+            <small class="d-block text-muted mt-1">Use this if the prompt timed out, wrong PIN was entered, or an error occurred.</small>
+        </div>
       </div>
 
     </div>
@@ -199,8 +205,18 @@
             list.appendChild(li);
         });
 
+        // Show/hide resend button based on status and method
+        const resendWrapper = document.getElementById("modal-resend-wrapper");
+        const resendBtn = document.getElementById("modal-resend-btn");
+
+        if (method === "M-Pesa" && status === "Pending") {
+            resendBtn.href = `/resend-stk/${id}`;
+            resendWrapper.classList.remove("d-none");
+        } else {
+            resendWrapper.classList.add("d-none");
+        }
         // Proper Bootstrap JS to show modal
-$('#orderModal').modal('show');
+        $('#orderModal').modal('show');
     });
 
     // Connect to Socket.IO server

@@ -51,6 +51,8 @@ class Payment(db.Model):
     phone = db.Column(db.String(20))
     amount = db.Column(db.Float)
     method = db.Column(db.String(20))   # Cash / M-Pesa
+    checkout_request_id = db.Column(db.String(100))
+    mpesa_receipt = db.Column(db.String(50))
     status = db.Column(db.String(20))   # Pending / Confirmed
     created_at = db.Column(db.DateTime, default=db.func.now())
 class OrderItem(db.Model):
@@ -139,6 +141,8 @@ def checkout():
     if method == "M-Pesa":
         stk_response = initiate_stk_push(phone, total)
         if stk_response.get("success"):
+            payment.checkout_request_id = stk_response.get("CheckoutRequestID")
+            db.session.commit()  # save it
             flash(f"STK Push sent to {phone}. Complete payment on your phone.", "info")
         else:
             flash(f"Failed to send STK Push: {stk_response.get('error')}", "danger")
@@ -154,7 +158,7 @@ def seed_menu():
         items = [
             MenuItem(name="Smokies", price=40, image_url="/static/images/smokies.jpg"),
             MenuItem(name="Chapati", price=25, image_url="/static/images/chapati.jpg"),
-            MenuItem(name="Kachumbari", price=5, image_url="/static/images/kachumbari.jpg"),
+            MenuItem(name="Kachumbari", price=1, image_url="/static/images/kachumbari.jpg"),
             MenuItem(name="Smocha (smokies)", price=70, image_url="/static/images/smocha.jpg"),
             MenuItem(name="Smocha (sausage)", price=80, image_url="/static/images/smocha.jpg"),
             MenuItem(name="Sausage", price=50, image_url="/static/images/sausage.png"),
@@ -221,20 +225,20 @@ def mpesa_callback():
         result_code = body.get('ResultCode')
         callback_items = body.get('CallbackMetadata', {}).get('Item', [])
 
-        # Extract amount and phone safely
-        amount = None
-        phone = None
-        for item in callback_items:
-            if item['Name'] == 'Amount':
-                amount = float(item['Value'])
-            elif item['Name'] == 'PhoneNumber':
-                phone = str(item['Value'])
-
         # Match payment in DB
-        payment = Payment.query.filter_by(phone=phone, status="Pending").first()
-        if payment and result_code == 0:
+        payment = Payment.query.filter_by(checkout_request_id=checkout_id, status="Pending").first()
+        if not payment:
+            print("No matching payment found")
+            return jsonify({"ResultCode": 0, "ResultDesc": "Accepted"})
+                
+        if result_code == 0:
+            # Extract mpesa receipt
+            for item in callback_items:
+                if item['Name'] == 'MpesaReceiptNumber':
+                    payment.mpesa_receipt = item['Value']
             payment.status = "Confirmed"
             db.session.commit()
+            db.session.refresh(payment)  # ensures latest DB state
             notify_payment_update(payment)
     except Exception as e:
         print("Error processing STK callback:", e)
@@ -296,6 +300,40 @@ def resend_stk(payment_id):
         else:
             flash(f"Failed to resend STK Push: {stk_response.get('error')}", "danger")
     return redirect(url_for('dashboard'))
+
+# Validation (can just accept all payments in sandbox)
+@app.route("/mpesa/c2b/validation", methods=["POST"])
+def c2b_validation():
+    data = request.get_json()
+    print("C2B Validation Received:", data)
+    return jsonify({"ResultCode": 0, "ResultDesc": "Accepted"})
+
+# Confirmation (actual payment info)
+@app.route("/mpesa/c2b/confirmation", methods=["POST"])
+def c2b_confirmation():
+    data = request.get_json()
+    print("C2B Confirmation Received:", data)
+
+    try:
+        amount = float(data.get("TransAmount", 0))
+        phone = str(data.get("MSISDN"))
+        receipt = data.get("TransID")
+        bill_ref = data.get("BillRefNumber")  # optional: link to your order
+        shortcode = data.get("BusinessShortCode")
+
+        # Match payment if you have a pending order for this phone / bill_ref
+        payment = Payment.query.filter_by(phone=phone, status="Pending").first()
+
+        if payment:
+            payment.status = "Confirmed"
+            payment.mpesa_receipt = receipt
+            db.session.commit()
+            notify_payment_update(payment)
+
+    except Exception as e:
+        print("Error processing C2B payment:", e)
+
+    return jsonify({"ResultCode": 0, "ResultDesc": "Accepted"})
 
 def format_currency(value):
     try:
