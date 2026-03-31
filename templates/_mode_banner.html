@@ -1,0 +1,39 @@
+{# ── templates/_mode_banner.html ──
+   Include this at the TOP of <body> on every page.
+   mpesa_mode is injected automatically by the context_processor in main.py
+   so you don't need to pass it manually.
+#}
+
+<style>
+.mode-banner {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 9000; text-align: center;
+    font-size: 10px; font-weight: 700; font-family: 'DM Sans', sans-serif;
+    padding: 4px 12px; letter-spacing: .05em;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.mode-banner.sandbox {
+    background: #fff3cd; color: #856404;
+    border-bottom: 2px solid #ffc107;
+}
+.mode-banner.live {
+    background: #d1f0e0; color: #1e5631;
+    border-bottom: 2px solid #1e8449;
+}
+.mode-banner a {
+    color: inherit; text-decoration: underline; font-size: 12px;
+}
+/* Push page content below banner */
+body { padding-top: 30px; }
+</style>
+
+<div id="mode-banner"
+     class="mode-banner {{ 'sandbox' if mpesa_mode == 'sandbox' else 'live' }}">
+    {% if mpesa_mode == 'sandbox' %}
+        🧪 SANDBOX MODE — Test transactions only
+    {% else %}
+        🟢 LIVE MODE — Real M-Pesa transactions active
+    {% endif %}
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('settings_page') }}">⚙️ Settings</a>
+</div>

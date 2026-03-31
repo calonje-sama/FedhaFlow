@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FedhaFlow Insights</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <style>
+        body { background:#f4f6f9; padding-top: 30px; font-family: 'DM Sans', sans-serif;}
+        .main-container { max-width:900px; }
+        .card-section {
+            background:#fff; border-radius:12px;
+            box-shadow:0 2px 10px rgba(0,0,0,.07);
+            padding:22px; margin-bottom:20px;
+        }
+        .section-title {
+            font-size:1rem; font-weight:700; color:#1a5276;
+            border-left:4px solid #1a5276; padding-left:10px;
+            margin-bottom:14px;
+        }
+        .btn-preset {
+            font-size:.8rem; padding:3px 11px; border-radius:20px;
+            border:1.5px solid #ccc; background:#fff; color:#333;
+            cursor:pointer; transition:all .15s;
+        }
+        .btn-preset.active { background:#1a5276; border-color:#1a5276; color:#fff; }
+
+        /* Stat tiles */
+        .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+        .stat-tile {
+            background:linear-gradient(135deg,#1a5276,#2980b9);
+            border-radius:10px; color:#fff; padding:14px 16px; text-align:center;
+        }
+        .stat-tile.green { background:linear-gradient(135deg,#1e8449,#27ae60); }
+        .stat-tile.amber { background:linear-gradient(135deg,#9a7d0a,#f1c40f); color:#333; }
+        .stat-tile.red   { background:linear-gradient(135deg,#922b21,#e74c3c); }
+        .stat-tile .val  { font-size:1.4rem; font-weight:700; }
+        .stat-tile .lbl  { font-size:.75rem; opacity:.85; margin-top:2px; }
+
+        .chart-wrap { position:relative; height:280px; }
+
+        /* AI prose */
+        .ai-prose { line-height:1.75; color:#333; }
+        .ai-prose h3 { font-size:1rem; font-weight:700; color:#1a5276; margin-top:16px; }
+        .ai-prose ul { padding-left:18px; }
+        .ai-prose li { margin-bottom:4px; }
+        .ai-prose strong { color:#1a5276; }
+
+        /* Skeleton loader */
+        .skeleton { background: linear-gradient(90deg,#e8e8e8 25%,#f5f5f5 50%,#e8e8e8 75%);
+                    background-size:200% 100%; animation:shimmer 1.4s infinite;
+                    border-radius:6px; }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .skel-line  { height:14px; margin-bottom:10px; }
+        .skel-short { width:60%; }
+        .skel-med   { width:80%; }
+
+        #loadingState  { display:none; }
+        #resultsState  { display:none; }
+        #errorState    { display:none; }
+        #emptyState    { display:none; }
+
+        .insight-table th { background:#1a5276; color:#fff; font-size:.82rem; }
+        .insight-table td { font-size:.82rem; }
+        .insight-table tr:nth-child(even) { background:#f4f6f9; }
+    </style>
+</head>
+<body>
+{% include '_mode_banner.html' %}
+<div class="main-container m-auto px-3 py-3 mb-5">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <a href="{{ url_for('home') }}" class="btn btn-secondary btn-sm">← Back</a>
+        <h4 class="mb-0">🤖 Sales Insights</h4>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary btn-sm">Dashboard</a>
+    </div>
+
+    <!-- Date picker card -->
+    <div class="card-section">
+        <div class="section-title">Analysis Period</div>
+        <div class="d-flex gap-2 flex-wrap mb-3">
+            <button class="btn-preset active" data-p="today">Today</button>
+            <button class="btn-preset" data-p="week">This Week</button>
+            <button class="btn-preset" data-p="month">This Month</button>
+            <button class="btn-preset" data-p="last30">Last 30 Days</button>
+            <button class="btn-preset" data-p="last3m">Last 3 Months</button>
+            <button class="btn-preset" data-p="year">This Year</button>
+            <button class="btn-preset" data-p="all">All Time</button>
+        </div>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <div>
+                <label class="form-label form-label-sm mb-0">From</label>
+                <input type="date" id="dateFrom" class="form-control form-control-sm" style="width:150px;">
+            </div>
+            <div>
+                <label class="form-label form-label-sm mb-0">To</label>
+                <input type="date" id="dateTo" class="form-control form-control-sm" style="width:150px;">
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-primary px-4" id="analyseBtn" onclick="runAnalysis()">
+                    🔍 Analyse
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading skeleton -->
+    <div id="loadingState" class="card-section">
+        <div class="skeleton skel-line skel-short"></div>
+        <div class="skeleton skel-line skel-med"></div>
+        <div class="skeleton skel-line"></div>
+        <div class="skeleton skel-line skel-med"></div>
+        <div class="skeleton skel-line skel-short"></div>
+        <p class="text-muted text-center mt-3 small">AI is analysing your sales data…</p>
+    </div>
+
+    <!-- Error -->
+    <div id="errorState" class="card-section text-center text-danger">
+        <p id="errorMsg">Something went wrong. Please try again.</p>
+    </div>
+
+    <!-- Empty -->
+    <div id="emptyState" class="card-section text-center text-muted">
+        <p>No confirmed sales found for this period. Try a different date range.</p>
+    </div>
+
+    <!-- Results -->
+    <div id="resultsState">
+
+        <!-- Stat tiles -->
+        <div class="stat-grid" id="statGrid"></div>
+
+        <!-- Charts row -->
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-md-6">
+                <div class="card-section">
+                    <div class="section-title">Payment Breakdown</div>
+                    <div class="chart-wrap"><canvas id="chartPayment"></canvas></div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6">
+                <div class="card-section">
+                    <div class="section-title">Top Selling Items</div>
+                    <div class="chart-wrap"><canvas id="chartItems"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-12">
+                <div class="card-section">
+                    <div class="section-title">Daily Revenue Trend</div>
+                    <div class="chart-wrap" style="height:220px;"><canvas id="chartDaily"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Item breakdown table -->
+        <div class="card-section">
+            <div class="section-title">Item Sales Breakdown</div>
+            <div class="table-responsive">
+            <table class="table table-bordered insight-table">
+                <thead><tr>
+                    <th>Item</th><th>Units Sold</th><th>Revenue (KES)</th><th>Avg per Order</th>
+                </tr></thead>
+                <tbody id="itemTable"></tbody>
+            </table>
+            </div>
+        </div>
+
+        <!-- AI written summary -->
+        <div class="card-section">
+            <div class="section-title">🤖 AI Analysis</div>
+            <div class="ai-prose" id="aiProse"></div>
+        </div>
+
+        <!-- Download PDF -->
+        <div class="text-center mt-3">
+            <button class="btn btn-danger px-5" id="downloadBtn" onclick="downloadPDF()">
+                ⬇️ Download Analysis PDF
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+Chart.register(ChartDataLabels);
+
+// ── Date helpers ──
+function toISO(d){ return d.toISOString().split('T')[0]; }
+let currentDateFrom='', currentDateTo='';
+
+function setPreset(p){
+    const now=new Date(); let from=new Date(now), to=new Date(now);
+    if(p==='week')  { from.setDate(now.getDate()-now.getDay()); }
+    else if(p==='month')  { from=new Date(now.getFullYear(),now.getMonth(),1); }
+    else if(p==='last30') { from.setDate(now.getDate()-29); }
+    else if(p==='last3m') { from=new Date(now.getFullYear(),now.getMonth()-3,now.getDate()); }
+    else if(p==='year')   { from=new Date(now.getFullYear(),0,1); }
+    else if(p==='all')    { from=new Date(2000,0,1); }
+    document.getElementById('dateFrom').value=toISO(from);
+    document.getElementById('dateTo').value=toISO(to);
+}
+
+document.querySelectorAll('.btn-preset').forEach(btn=>{
+    btn.addEventListener('click',function(){
+        document.querySelectorAll('.btn-preset').forEach(b=>b.classList.remove('active'));
+        this.classList.add('active');
+        setPreset(this.dataset.p);
+    });
+});
+
+// Default today
+setPreset('today');
+
+// ── Chart instances (destroyed on re-run) ──
+let charts = {};
+function destroyChart(id){ if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
+
+// ── Colour palette ──
+const PALETTE=['#1a5276','#1e8449','#9a7d0a','#922b21','#6c3483','#1a535c','#784212','#2e4057'];
+
+// ── Main analysis runner ──
+async function runAnalysis(){
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo   = document.getElementById('dateTo').value;
+    if(!dateFrom||!dateTo){ alert('Please select a date range.'); return; }
+    currentDateFrom=dateFrom; currentDateTo=dateTo;
+
+    setState('loading');
+
+    try {
+        // 1. Fetch raw sales data
+        const res  = await fetch(`/api/sales-data?from=${dateFrom}&to=${dateTo}`);
+        const data = await res.json();
+
+        if(!data.payments || data.payments.length===0){
+            setState('empty'); return;
+        }
+
+        // 2. Compute client-side analytics
+        const analytics = computeAnalytics(data.payments);
+
+        // 3. Render charts & tables
+        renderStats(analytics);
+        renderCharts(analytics);
+        renderItemTable(analytics);
+
+        // 4. Call Claude API for written analysis
+        renderAIProse(null, true); // show loading prose
+        const prose = await fetchAIAnalysis(analytics, dateFrom, dateTo);
+        renderAIProse(prose, false);
+
+        setState('results');
+
+    } catch(err){
+        console.error(err);
+        document.getElementById('errorMsg').innerText = 'Error: ' + err.message;
+        setState('error');
+    }
+}
+
+function setState(s){
+    ['loading','results','error','empty'].forEach(x=>{
+        document.getElementById(x+'State').style.display = x===s ? 'block' : 'none';
+    });
+}
+
+// ── Analytics computation ──
+function computeAnalytics(payments){
+    const confirmed = payments.filter(p=>p.status==='Confirmed');
+
+    // Totals by method
+    let cashTotal=0, tillTotal=0, phoneTotal=0;
+    confirmed.forEach(p=>{
+        if(p.method==='Cash')   cashTotal+=p.amount;
+        else if(p.pay_channel==='Phone') phoneTotal+=p.amount;
+        else tillTotal+=p.amount;
+    });
+    const totalRevenue = cashTotal+tillTotal+phoneTotal;
+
+    // Item aggregates
+    const itemMap={};
+    confirmed.forEach(p=>{
+        (p.items||[]).forEach(item=>{
+            if(!itemMap[item.name]) itemMap[item.name]={name:item.name,units:0,revenue:0,orders:0};
+            itemMap[item.name].units   += item.qty;
+            itemMap[item.name].revenue += item.qty * item.price;
+            itemMap[item.name].orders  += 1;
+        });
+    });
+    const items = Object.values(itemMap).sort((a,b)=>b.revenue-a.revenue);
+
+    // Daily revenue
+    const dailyMap={};
+    confirmed.forEach(p=>{
+        const d = (p.date||'').slice(0,10);
+        if(d){ dailyMap[d]=(dailyMap[d]||0)+p.amount; }
+    });
+    const dailyDates   = Object.keys(dailyMap).sort();
+    const dailyRevenue = dailyDates.map(d=>dailyMap[d]);
+
+    // Order stats
+    const avgOrder = confirmed.length ? totalRevenue/confirmed.length : 0;
+    const maxOrder = confirmed.length ? Math.max(...confirmed.map(p=>p.amount)) : 0;
+
+    // Busiest day
+    let busiestDay='—', busiestAmt=0;
+    dailyDates.forEach(d=>{ if(dailyMap[d]>busiestAmt){ busiestAmt=dailyMap[d]; busiestDay=d; } });
+
+    return {
+        confirmed, totalRevenue, cashTotal, tillTotal, phoneTotal,
+        items, dailyDates, dailyRevenue,
+        avgOrder, maxOrder, busiestDay, busiestAmt,
+        totalOrders: confirmed.length,
+        pendingCount: payments.filter(p=>p.status==='Pending').length
+    };
+}
+
+// ── Render stat tiles ──
+function renderStats(a){
+    const grid = document.getElementById('statGrid');
+    const fmt  = v=>Number(v).toLocaleString('en-KE',{maximumFractionDigits:0});
+    grid.innerHTML = `
+        <div class="stat-tile">
+            <div class="val">KES ${fmt(a.totalRevenue)}</div>
+            <div class="lbl">Total Revenue</div>
+        </div>
+        <div class="stat-tile green">
+            <div class="val">${a.totalOrders}</div>
+            <div class="lbl">Confirmed Orders</div>
+        </div>
+        <div class="stat-tile">
+            <div class="val">KES ${fmt(a.avgOrder)}</div>
+            <div class="lbl">Avg Order Value</div>
+        </div>
+        <div class="stat-tile amber">
+            <div class="val">${a.pendingCount}</div>
+            <div class="lbl">Pending Orders</div>
+        </div>
+        <div class="stat-tile green">
+            <div class="val">${a.items.length>0?a.items[0].name:'—'}</div>
+            <div class="lbl">Best Seller</div>
+        </div>
+        <div class="stat-tile">
+            <div class="val">KES ${fmt(a.maxOrder)}</div>
+            <div class="lbl">Largest Order</div>
+        </div>
+    `;
+}
+
+// ── Render charts ──
+function renderCharts(a){
+    const fmt = v=>Number(v).toLocaleString('en-KE',{maximumFractionDigits:0});
+
+    // Payment pie
+    destroyChart('chartPayment');
+    const cpCtx = document.getElementById('chartPayment').getContext('2d');
+    charts['chartPayment'] = new Chart(cpCtx,{
+        type:'doughnut',
+        data:{
+            labels:['Cash','M-Pesa Till','M-Pesa Phone'],
+            datasets:[{data:[a.cashTotal,a.tillTotal,a.phoneTotal],
+                       backgroundColor:['#5d6d7e','#1e8449','#1a5276'],
+                       borderWidth:2}]
+        },
+        options:{
+            plugins:{
+                datalabels:{
+                    color:'#fff', font:{weight:'bold',size:11},
+                    formatter:(v,ctx)=>{
+                        const total=ctx.dataset.data.reduce((s,x)=>s+x,0);
+                        return total>0?Math.round(v/total*100)+'%':'';
+                    }
+                },
+                legend:{position:'bottom',labels:{font:{size:11}}}
+            },
+            maintainAspectRatio:false
+        }
+    });
+
+    // Items bar (top 6)
+    destroyChart('chartItems');
+    const top6   = a.items.slice(0,6);
+    const ciCtx  = document.getElementById('chartItems').getContext('2d');
+    charts['chartItems'] = new Chart(ciCtx,{
+        type:'bar',
+        data:{
+            labels:top6.map(i=>i.name),
+            datasets:[{
+                label:'Units Sold',
+                data:top6.map(i=>i.units),
+                backgroundColor:PALETTE.slice(0,top6.length),
+                borderRadius:5
+            }]
+        },
+        options:{
+            plugins:{
+                datalabels:{ anchor:'end', align:'end', font:{size:10}, color:'#333',
+                             formatter:v=>v },
+                legend:{display:false}
+            },
+            scales:{
+                y:{beginAtZero:true, ticks:{font:{size:10}}},
+                x:{ticks:{font:{size:10}}}
+            },
+            maintainAspectRatio:false
+        }
+    });
+
+    // Daily line
+    destroyChart('chartDaily');
+    const cdCtx = document.getElementById('chartDaily').getContext('2d');
+    charts['chartDaily'] = new Chart(cdCtx,{
+        type:'line',
+        data:{
+            labels:a.dailyDates.map(d=>{
+                const dt=new Date(d+'T12:00:00');
+                return dt.toLocaleDateString('en-KE',{day:'numeric',month:'short'});
+            }),
+            datasets:[{
+                label:'Revenue (KES)',
+                data:a.dailyRevenue,
+                borderColor:'#1a5276',
+                backgroundColor:'rgba(26,82,118,.12)',
+                fill:true, tension:.3, pointRadius:4, pointBackgroundColor:'#1a5276'
+            }]
+        },
+        options:{
+            plugins:{
+                datalabels:{display:false},
+                legend:{display:false}
+            },
+            scales:{
+                y:{beginAtZero:true, ticks:{font:{size:10},
+                   callback:v=>'KES '+v.toLocaleString()}},
+                x:{ticks:{font:{size:10}}}
+            },
+            maintainAspectRatio:false
+        }
+    });
+}
+
+// ── Item table ──
+function renderItemTable(a){
+    const fmt=v=>Number(v).toLocaleString('en-KE',{maximumFractionDigits:0});
+    const tbody=document.getElementById('itemTable');
+    tbody.innerHTML = a.items.map(item=>`
+        <tr>
+            <td>${item.name}</td>
+            <td>${item.units}</td>
+            <td>KES ${fmt(item.revenue)}</td>
+            <td>${(item.units/item.orders).toFixed(1)}</td>
+        </tr>
+    `).join('');
+}
+
+// ── AI prose via Claude API ──
+function renderAIProse(html, loading){
+    const el=document.getElementById('aiProse');
+    if(loading){
+        el.innerHTML=`
+            <div class="skeleton skel-line skel-short"></div>
+            <div class="skeleton skel-line skel-med"></div>
+            <div class="skeleton skel-line"></div>
+            <div class="skeleton skel-line skel-med"></div>
+            <div class="skeleton skel-line skel-short"></div>
+            <p class="text-muted small text-center mt-2">Claude is writing your analysis…</p>`;
+    } else {
+        el.innerHTML = html || '<p class="text-muted">No analysis available.</p>';
+    }
+}
+
+async function fetchAIAnalysis(analytics, dateFrom, dateTo){
+    const fmt=v=>Number(v).toLocaleString('en-KE',{maximumFractionDigits:0});
+
+    const prompt = `You are a business analyst for FedhaFlow, a small cafeteria POS system in Nairobi, Kenya.
+Analyse the following sales data for the period ${dateFrom} to ${dateTo} and provide a concise, insightful business analysis.
+
+## Data Summary
+- Total Revenue: KES ${fmt(analytics.totalRevenue)}
+- Total Confirmed Orders: ${analytics.totalOrders}
+- Average Order Value: KES ${fmt(analytics.avgOrder)}
+- Largest Single Order: KES ${fmt(analytics.maxOrder)}
+- Pending (unconfirmed) orders: ${analytics.pendingCount}
+- Payment breakdown — Cash: KES ${fmt(analytics.cashTotal)}, M-Pesa Till (STK): KES ${fmt(analytics.tillTotal)}, M-Pesa Phone (C2B): KES ${fmt(analytics.phoneTotal)}
+- Busiest day: ${analytics.busiestDay} with KES ${fmt(analytics.busiestAmt)}
+
+## Item Sales (sorted by revenue)
+${analytics.items.map(i=>`- ${i.name}: ${i.units} units sold, KES ${fmt(i.revenue)} revenue`).join('\n')}
+
+## Daily Revenue
+${analytics.dailyDates.map((d,i)=>`- ${d}: KES ${fmt(analytics.dailyRevenue[i])}`).join('\n')}
+
+Write a structured analysis with these sections using HTML formatting (use <h3> for section titles, <ul><li> for lists, <strong> for key figures):
+1. **Overview** — a 2-3 sentence summary of the period
+2. **What's Selling** — top items, what's popular, what's underperforming
+3. **Payment Trends** — how customers are paying, any notable patterns
+4. **Daily Patterns** — busiest days, slowest days, any trends
+5. **Recommendations** — 2-3 practical, specific suggestions for this cafeteria to improve sales or operations
+
+Keep it concise, practical and relevant to a small Kenyan street-food cafeteria. Use KES currency. Do not include any markdown code blocks or backticks — output clean HTML only.`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            model:"claude-sonnet-4-20250514",
+            max_tokens:1000,
+            messages:[{role:"user", content:prompt}]
+        })
+    });
+
+    const data = await response.json();
+    const text = (data.content||[]).map(b=>b.type==='text'?b.text:'').join('');
+    return text;
+}
+
+// ── PDF download ──
+async function downloadPDF(){
+    const dateFrom=currentDateFrom, dateTo=currentDateTo;
+    if(!dateFrom){ alert('Please run an analysis first.'); return; }
+
+    document.getElementById('downloadBtn').disabled=true;
+    document.getElementById('downloadBtn').innerText='Generating…';
+
+    // Capture chart images
+    const chartImages={};
+    ['chartPayment','chartItems','chartDaily'].forEach(id=>{
+        const canvas=document.getElementById(id);
+        if(canvas) chartImages[id]=canvas.toDataURL('image/png');
+    });
+
+    // Fetch analytics data again for PDF route
+    const res  = await fetch(`/api/sales-data?from=${dateFrom}&to=${dateTo}`);
+    const data = await res.json();
+    const analytics = computeAnalytics(data.payments||[]);
+    const prose = document.getElementById('aiProse').innerHTML;
+
+    const pdfRes = await fetch('/generate-insights-pdf',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+            date_from:dateFrom, date_to:dateTo,
+            analytics:{
+                totalRevenue:analytics.totalRevenue,
+                totalOrders:analytics.totalOrders,
+                avgOrder:analytics.avgOrder,
+                maxOrder:analytics.maxOrder,
+                cashTotal:analytics.cashTotal,
+                tillTotal:analytics.tillTotal,
+                phoneTotal:analytics.phoneTotal,
+                busiestDay:analytics.busiestDay,
+                busiestAmt:analytics.busiestAmt,
+                pendingCount:analytics.pendingCount,
+                items:analytics.items,
+                dailyDates:analytics.dailyDates,
+                dailyRevenue:analytics.dailyRevenue
+            },
+            prose:prose,
+            chart_images:chartImages
+        })
+    });
+
+    const blob=await pdfRes.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=`FedhaFlow_Insights_${dateFrom}_${dateTo}.pdf`; a.click();
+    URL.revokeObjectURL(url);
+    document.getElementById('downloadBtn').disabled=false;
+    document.getElementById('downloadBtn').innerText='⬇️ Download Analysis PDF';
+}
+</script>
+</body>
+</html>

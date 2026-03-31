@@ -2,306 +2,507 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>FedhaFlow Menu</title>
+    <title>FedhaFlow {% if edit_payment %}Edit Order #{{ edit_payment.id }}{% else %}Menu{% endif %}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        .main-container{
-            max-width: 800px;
+        /* ── Base ── */
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: #f0f2f5;
+            padding-top: 30px;   /* for mode banner */
+            padding-bottom: 100px; /* space for floating bar */
+            margin: 0;
         }
-        .menu-card { 
-            margin-bottom: 10px; 
+
+        /* ── Mode banner (matches other pages) ── */
+        .mode-banner {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 9000;
+            text-align: center; font-size: .78rem; font-weight: 700;
+            padding: 4px 12px; letter-spacing: .05em;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
         }
-        .quantity-input { 
-            width: 60px; 
-            text-align: center; 
-            display: inline-block; 
+        .mode-banner.sandbox { background: #fff3cd; color: #856404; border-bottom: 2px solid #ffc107; }
+        .mode-banner.live    { background: #d1f0e0; color: #1e5631; border-bottom: 2px solid #1e8449; }
+        .mode-banner a       { color: inherit; text-decoration: underline; font-size: .75rem; }
+
+        /* ── Page wrapper ── */
+        .page-wrap { max-width: 860px; margin: 0 auto; padding: 14px 14px 0; }
+
+        /* ── Top nav bar ── */
+        .top-nav {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: 14px;
         }
-        #total { 
-            font-weight: bold; 
-            margin-top: 20px; 
-            text-align: center;
-            font-size: 30px;
+        .btn-nav {
+            font-size: .82rem; font-weight: 600; padding: 7px 16px;
+            border-radius: 8px; border: none; cursor: pointer;
+            transition: all .15s;
         }
-        .menu-card img {
-            width: 100%;          /* make image fill card width */
-            height: 100px;        /* fixed height for all images */
-            object-fit: cover;    /* crop/scale without distortion */
+        .btn-nav.secondary { background: #e4e6ea; color: #333; }
+        .btn-nav.secondary:hover { background: #d0d2d6; }
+        .btn-nav.primary   { background: #1a5276; color: #fff; }
+        .btn-nav.primary:hover { background: #154360; }
+
+        /* ── Edit banner ── */
+        .edit-banner {
+            background: #fff3cd; border: 1.5px solid #ffc107;
+            border-radius: 10px; padding: 10px 16px;
+            margin-bottom: 14px; display: flex;
+            align-items: center; gap: 10px; font-size: .88rem;
+            font-weight: 500;
         }
-        #menuForm input[readonly] {
-            background-color: #BCB8B1;
-            cursor: not-allowed;
-        } 
-        button:disabled {
-            cursor: not-allowed !important;
-            opacity: 0.6;
-            pointer-events: all !important; /* allow cursor change */
-        }        
-        .menu-card {
-            height: 100%;
+
+        /* ── Order config row (method + phone) ── */
+        .config-card {
+            background: #fff; border-radius: 12px;
+            box-shadow: 0 1px 6px rgba(0,0,0,.07);
+            padding: 14px 16px; margin-bottom: 16px;
+            display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
         }
-        [class^="col-"]{
-            margin-bottom: 10px;
+        .config-field { display: flex; flex-direction: column; flex: 1; min-width: 160px; }
+        .config-field label {
+            font-size: .72rem; font-weight: 700; color: #777;
+            text-transform: uppercase; letter-spacing: .05em;
+            margin-bottom: 5px;
         }
-        #menuForm .form-label {
-            min-width: 40%; 
-            max-width: max-content;
-            margin-right: 10px;
+        .config-field select,
+        .config-field input {
+            border: 1.5px solid #ddd; border-radius: 8px;
+            padding: 8px 11px; font-size: .9rem;
+            font-family: 'DM Sans', sans-serif;
+            outline: none; transition: border-color .15s;
+            background: #fff;
         }
-        .disabled-lock-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            cursor: not-allowed;
-            z-index: 2;
-            background-color: rgba(255, 255, 255, 0); /* fully transparent */
+        .config-field select:focus,
+        .config-field input:focus { border-color: #1a5276; }
+        .config-field input[readonly] { background: #f4f4f4; color: #aaa; cursor: not-allowed; }
+        .phone-error { color: #e74c3c; font-size: .75rem; margin-top: 4px; display: none; }
+
+        /* ── Section heading ── */
+        .section-label {
+            font-size: .72rem; font-weight: 700; color: #999;
+            text-transform: uppercase; letter-spacing: .08em;
+            margin-bottom: 10px; padding-left: 2px;
         }
-        #centerToast {
-            width: 350px;          /* fixed width */
-            max-width: 90%;        /* responsive on small screens */
-            text-align: center;
+
+        /* ── Item grid ── */
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
         }
+        @media (max-width: 600px) {
+            .items-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        }
+
+        /* ── Item card ── */
+        .item-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 1px 5px rgba(0,0,0,.07);
+            overflow: hidden;
+            cursor: pointer;
+            position: relative;
+            transition: transform .15s, box-shadow .15s;
+            border: 2.5px solid transparent;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .item-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+        .item-card:active { transform: scale(.97); }
+
+        /* Selected state */
+        .item-card.selected {
+            border-color: #1a5276;
+            box-shadow: 0 0 0 3px rgba(26,82,118,.15), 0 2px 8px rgba(0,0,0,.08);
+        }
+
+        /* Checkmark badge */
+        .item-card .check-badge {
+            position: absolute; top: 8px; right: 8px;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: #1a5276; color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 700;
+            opacity: 0; transform: scale(.5);
+            transition: opacity .15s, transform .2s cubic-bezier(.34,1.56,.64,1);
+        }
+        .item-card.selected .check-badge { opacity: 1; transform: scale(1); }
+
+        /* Image */
+        .item-card .item-img {
+            width: 100%; height: 110px; object-fit: cover;
+            display: block; pointer-events: none;
+        }
+
+        /* Card body */
+        .item-card .item-body {
+            padding: 8px 10px 10px;
+        }
+        .item-card .item-name {
+            font-size: .88rem; font-weight: 700;
+            color: #222; margin-bottom: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .item-card .item-price {
+            font-size: .8rem; color: #1a5276; font-weight: 600; margin-bottom: 8px;
+        }
+
+        /* Qty stepper — only visible when selected */
+        .item-card .qty-row {
+            display: flex; align-items: center; justify-content: center;
+            gap: 0; height: 0; overflow: hidden; opacity: 0;
+            transition: height .2s ease, opacity .2s ease, margin .2s ease;
+            margin-top: 0;
+        }
+        .item-card.selected .qty-row {
+            height: 38px; opacity: 1; margin-top: 2px;
+        }
+        .qty-btn {
+            width: 36px; height: 36px; border-radius: 8px;
+            border: 1.5px solid #1a5276; background: #fff;
+            color: #1a5276; font-size: 1.1rem; font-weight: 700;
+            cursor: pointer; display: flex; align-items: center;
+            justify-content: center; transition: all .12s;
+            flex-shrink: 0;
+        }
+        .qty-btn:hover { background: #1a5276; color: #fff; }
+        .qty-btn:active { transform: scale(.9); }
+        .qty-display {
+            width: 42px; height: 36px; text-align: center;
+            border: 1.5px solid #ddd; border-left: none; border-right: none;
+            font-size: .95rem; font-weight: 700; color: #222;
+            background: #f9f9f9; display: flex; align-items: center;
+            justify-content: center;
+        }
+
+        /* Hidden inputs */
+        .hidden-inputs { display: none; }
+
+        /* ── Floating total bar ── */
+        .floating-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            z-index: 8000;
+            background: #1a5276;
+            padding: 12px 20px;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,.18);
+            transform: translateY(100%);
+            transition: transform .3s cubic-bezier(.34,1.2,.64,1);
+        }
+        .floating-bar.visible { transform: translateY(0); }
+
+        .bar-total {
+            display: flex; flex-direction: column;
+        }
+        .bar-total .bar-label { font-size: .7rem; color: rgba(255,255,255,.7); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+        .bar-total .bar-amount { font-size: 1.3rem; font-weight: 700; color: #fff; line-height: 1.1; }
+
+        .bar-items-count {
+            font-size: .78rem; color: rgba(255,255,255,.75);
+            background: rgba(255,255,255,.15); border-radius: 20px;
+            padding: 3px 10px; font-weight: 600;
+        }
+
+        .btn-checkout {
+            background: #fff; color: #1a5276;
+            border: none; border-radius: 10px;
+            padding: 11px 24px; font-size: .95rem;
+            font-weight: 700; cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            transition: all .15s; white-space: nowrap;
+        }
+        .btn-checkout:hover   { background: #eaf4fb; }
+        .btn-checkout:active  { transform: scale(.97); }
+        .btn-checkout:disabled {
+            opacity: .5; cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* ── Toast ── */
+        .center-toast {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%,-50%);
+            background: rgba(0,0,0,.82); color: #fff;
+            padding: 10px 22px; border-radius: 10px;
+            font-size: .9rem; z-index: 9999;
+            pointer-events: none; opacity: 0;
+            transition: opacity .2s;
+        }
+        .center-toast.show { opacity: 1; }
     </style>
 </head>
 <body>
-<div class="main-container mt-2 mb-5 m-auto px-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <a href="{{ url_for('home') }}" class="btn btn-secondary">Back</a>
-        <a href="{{ url_for('dashboard') }}" class="btn btn-primary">Dashboard</a>
+{% include '_mode_banner.html' %}
+<div class="page-wrap">
+
+    <!-- Top nav -->
+    <div class="top-nav">
+        <a href="{{ url_for('home') }}" class="btn btn-secondary btn-sm">← Back</a>
+        <h5 style="margin:0; font-weight:700; color:#1a5276;">
+            {% if edit_payment %}✏️ Edit Order #{{ edit_payment.id }}{% else %}New Order{% endif %}
+        </h5>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-sm">Dashboard</a>
     </div>
-    <h1 class="text-center mb-3">Menu</h1>
-    <form method="POST" action="{{ url_for('checkout') }}" id="menuForm">
-        <div class="col-12 mb-3 d-flex align-items-center">
-            <label class="form-label">Payment Method:</label>
-            <select name="method" id="paymentMethod" class="form-select mb-2">
-                <option value="Cash">Cash</option>
-                <option value="M-Pesa">M-Pesa</option>
+
+    {% if edit_payment %}
+    <div class="edit-banner">
+        ✏️ <span>Editing existing order. Tap items to change quantities, then tap <strong>Update Order</strong>.</span>
+    </div>
+    {% endif %}
+
+    <!-- Order config -->
+    <div class="config-card">
+        <div class="config-field">
+            <label>Payment Method</label>
+            <select id="paymentMethod" name="method">
+                <option value="Cash"  {% if edit_payment and edit_payment.method == "Cash"   %}selected{% endif %}>💵 Cash</option>
+                <option value="M-Pesa" {% if edit_payment and edit_payment.method == "M-Pesa" %}selected{% endif %}>📱 M-Pesa</option>
             </select>
         </div>
-
-        <div class="col-12 mb-3 d-flex align-items-center">
-            <label class="form-label">Phone Number:</label>
-            <div class="text-center w-100">
-                <input type="text" name="phone" class="form-control numberInput" id="phoneInput" placeholder="eg. 0712345678..." required>
-                <small id="phoneError" class="text-danger d-none">
-                    Phone number is required for M-Pesa payments only!
-                </small>
-            </div>
+        <div class="config-field" id="phoneField">
+            <label>Phone Number</label>
+            <input type="tel" id="phoneInput" name="phone"
+                   placeholder="e.g. 0712 345 678"
+                   value="{{ edit_payment.phone if edit_payment and edit_payment.phone else '' }}">
+            <span class="phone-error" id="phoneError">Required for M-Pesa payments</span>
         </div>
+    </div>
 
-        <div class="row">
+    <!-- Items grid -->
+    <div class="section-label">Select Items</div>
+
+    <form id="menuForm" method="POST"
+          action="{% if edit_payment %}{{ url_for('update_order', payment_id=edit_payment.id) }}{% else %}{{ url_for('checkout') }}{% endif %}">
+
+        <!-- Hidden inputs written by JS on submit -->
+        <div class="hidden-inputs" id="hiddenInputs"></div>
+
+        <!-- Visible method/phone fields inside form for submission -->
+        <input type="hidden" id="formMethod" name="method" value="Cash">
+        <input type="hidden" id="formPhone"  name="phone"  value="">
+
+        <div class="items-grid">
             {% for item in menu_items %}
-            <div class="col-6 col-md-4">
-                <div class="card menu-card">
-                    <img src="{{ item.image_url }}" class="card-img-top" alt="{{ item.name }}">
-                    <div class="card-body text-center p-1">
-                        <h5 class="card-title">{{ item.name }}</h5>
-                        <p class="card-text mb-1">KES {{ item.price }}</p>
-                        <div class="d-flex justify-content-center align-items-center mb-2">
-                            <button type="button" class="btn btn-sm btn-outline-secondary minus-btn">-</button>
-                            <input type="number" name="qty_{{ item.id }}" class="quantity-input mx-1" value="0" data-price="{{ item.price }}">
-                            <button type="button" class="btn btn-sm btn-outline-secondary plus-btn">+</button>
-                        </div>
-                        <input type="checkbox" name="items" class="form-check-input item-checkbox" value="{{ item.id }}">
-                        <label class="form-check-label">Add</label>
+            {% set prefill_qty = qty_map[item.id] if (qty_map is defined and item.id in qty_map) else 0 %}
+            <div class="item-card {% if prefill_qty > 0 %}selected{% endif %}"
+                 data-id="{{ item.id }}"
+                 data-price="{{ item.price }}"
+                 data-qty="{{ prefill_qty }}">
+
+                <div class="check-badge">✓</div>
+                <img class="item-img" src="{{ item.image_url }}" alt="{{ item.name }}"
+                     onerror="this.src='/static/images/default.jpg'">
+
+                <div class="item-body">
+                    <div class="item-name">{{ item.name }}</div>
+                    <div class="item-price">KES {{ item.price }}</div>
+
+                    <div class="qty-row" onclick="event.stopPropagation()">
+                        <button type="button" class="qty-btn minus-btn">−</button>
+                        <div class="qty-display">{{ prefill_qty if prefill_qty > 0 else 1 }}</div>
+                        <button type="button" class="qty-btn plus-btn">+</button>
                     </div>
                 </div>
             </div>
             {% endfor %}
         </div>
-
-        <div id="total">Total: KES 0</div>
-        <div id="checkoutWrapper" class="d-flex justify-content-center align-items-center mt-3" style="position: relative;">
-            <button type="submit" class="btn btn-lg btn-primary" id="checkoutBtn" disabled>Checkout</button>
-            <div class="disabled-lock-overlay" id="totalOverlay"></div>
-        </div>
     </form>
-
-    <!-- toast to select item -->
-     <div id="centerToast" 
-        class="position-fixed top-50 start-50 translate-middle bg-dark text-white px-4 py-2 rounded shadow d-none"
-        style="z-index: 2000;">
-        Please select at least one item before checkout.
-    </div>
 </div>
 
-<!-- Bootstrap JS & dependencies -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<!-- Floating total bar -->
+<div class="floating-bar" id="floatingBar">
+    <div class="bar-total">
+        <span class="bar-label">Total</span>
+        <span class="bar-amount" id="barAmount">KES 0</span>
+    </div>
+    <span class="bar-items-count" id="barCount">0 items</span>
+    <button class="btn-checkout" id="checkoutBtn" onclick="submitOrder()">
+        {% if edit_payment %}Update Order{% else %}Checkout{% endif %}
+    </button>
+</div>
+
+<!-- Toast -->
+<div class="center-toast" id="centerToast">Please select at least one item first.</div>
+
 <script>
-$(function() {
-    function restrictInput(e) {
-    const input = e.target;
-    let value = input.value;
+(function() {
+    // ── State ──
+    const state = {}; // { itemId: qty }
 
-    // Remove invalid characters (anything except digits, +, .)
-    value = value.replace(/[^0-9+\.]/g, "");
-
-    // Allow only 1 +
-    const plusCount = (value.match(/\+/g) || []).length;
-    if (plusCount > 1) {
-        // Remove extra +
-        let firstIndex = value.indexOf("+");
-        value = value.slice(0, firstIndex + 1) + value.slice(firstIndex + 1).replace(/\+/g, "");
-    }
-
-    // Allow only 1 .
-    const dotCount = (value.match(/\./g) || []).length;
-    if (dotCount > 1) {
-        let firstIndex = value.indexOf(".");
-        value = value.slice(0, firstIndex + 1) + value.slice(firstIndex + 1).replace(/\./g, "");
-    }
-
-    // Update the input value
-    input.value = value;
-}
-$('.numberInput').on('input', restrictInput);
-
-const checkboxes = document.querySelectorAll('.item-checkbox');
-const quantities = document.querySelectorAll('.quantity-input');
-const totalDiv = document.getElementById('total');
-const plusButtons = document.querySelectorAll('.plus-btn');
-const minusButtons = document.querySelectorAll('.minus-btn');
-
-// Event listeners for checkbox changes
-checkboxes.forEach((cb, i) => cb.addEventListener('change', updateTotal));
-
-// Event listeners for quantity buttons
-plusButtons.forEach((btn, i) => {
-    btn.addEventListener('click', () => {
-        quantities[i].value = parseInt(quantities[i]?.value) + 1 || 1;
-        checkboxes[i].checked = true;
-        updateTotal();
-    });
-});
-minusButtons.forEach((btn, i) => {
-    btn.addEventListener('click', () => {
-        if(parseInt(quantities[i].value) > 0) quantities[i].value = parseInt(quantities[i]?.value) - 1 || 0;
-        if(quantities[i].value == 0) checkboxes[i].checked = false;
-        updateTotal();
-    });
-});
-
-// Select the checkout button
-const checkoutBtn = document.getElementById('checkoutBtn');
-
-function updateCheckoutState() {
-    let enable = false;
-    quantities.forEach((q, i) => {
-        if (parseInt(q.value) > 0 && checkboxes[i].checked) {
-            enable = true;
+    // ── Pre-fill from edit mode ──
+    document.querySelectorAll('.item-card').forEach(card => {
+        const id  = card.dataset.id;
+        const qty = parseInt(card.dataset.qty) || 0;
+        if (qty > 0) {
+            state[id] = qty;
+            card.querySelector('.qty-display').textContent = qty;
         }
     });
-    checkoutBtn.disabled = !enable;
-    if (enable) {
-        $('#totalOverlay').addClass('d-none');
-    }else{
-        $('#totalOverlay').removeClass('d-none');
-    }
-}
 
-function updateTotal() {
-    let total = 0;
-    checkboxes.forEach((cb, i) => {
-        if(cb.checked) {
-            const qty = parseInt(quantities[i].value) || 0;
-            total += parseFloat(quantities[i].dataset.price) * qty;
-        }
+    // ── Card tap (select/deselect) ──
+    document.querySelectorAll('.item-card').forEach(card => {
+        card.addEventListener('click', function() {
+            const id = this.dataset.id;
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                delete state[id];
+                this.querySelector('.qty-display').textContent = '1';
+            } else {
+                // Select with qty 1
+                this.classList.add('selected');
+                state[id] = 1;
+                this.querySelector('.qty-display').textContent = '1';
+            }
+            updateTotal();
+        });
     });
-    totalDiv.textContent = "Total: KES " + total;
-    updateCheckoutState();  // <-- update checkout button state
-}
 
-const paymentMethod = document.getElementById("paymentMethod");
-const phoneInput = document.getElementById("phoneInput");
-const phoneError = document.getElementById("phoneError");
+    // ── +/- buttons ──
+    document.querySelectorAll('.item-card').forEach(card => {
+        const id       = card.dataset.id;
+        const display  = card.querySelector('.qty-display');
+        const plusBtn  = card.querySelector('.plus-btn');
+        const minusBtn = card.querySelector('.minus-btn');
 
-function togglePhoneRequirement() {
-    phoneError.classList.add("d-none");
-    if (paymentMethod.value === "M-Pesa") {
-        phoneInput.required = true;
-        phoneInput.readOnly = false;
-    } else {
-        phoneInput.required = false;
-        phoneInput.value = "";   // optional: clear it
-        phoneInput.readOnly = true; // optional: disable for cash
-    }
-}
+        plusBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const cur = state[id] || 1;
+            state[id] = cur + 1;
+            display.textContent = state[id];
+            updateTotal();
+        });
 
-// Run on page load
-togglePhoneRequirement();
+        minusBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const cur = state[id] || 1;
+            if (cur <= 1) {
+                // Deselect
+                card.classList.remove('selected');
+                delete state[id];
+                display.textContent = '1';
+            } else {
+                state[id] = cur - 1;
+                display.textContent = state[id];
+            }
+            updateTotal();
+        });
+    });
 
-paymentMethod.addEventListener("change", togglePhoneRequirement);
+    // ── Total calculation ──
+    function updateTotal() {
+        let total = 0, itemCount = 0;
+        document.querySelectorAll('.item-card').forEach(card => {
+            const id = card.dataset.id;
+            if (state[id]) {
+                total     += parseFloat(card.dataset.price) * state[id];
+                itemCount += state[id];
+            }
+        });
 
-phoneInput.addEventListener("click", function () {
-    if (phoneInput.readOnly) {
-        phoneError.classList.remove("d-none");
-        setTimeout(() => {
-            phoneError.classList.add("d-none");
-        }, 3500);
-    } else {
-        phoneError.classList.add("d-none");
-    }
-});
+        document.getElementById('barAmount').textContent =
+            'KES ' + total.toLocaleString('en-KE', {maximumFractionDigits: 0});
+        document.getElementById('barCount').textContent =
+            itemCount + (itemCount === 1 ? ' item' : ' items');
 
-const checkoutWrapper = document.getElementById("checkoutWrapper");
-const centerToast = document.getElementById("centerToast");
-
-checkoutWrapper.addEventListener("click", function () {
-    console.log('locked')
-    if (checkoutBtn.disabled) {
-        centerToast.classList.remove("d-none");       
-        setTimeout(() => {
-            centerToast.classList.add("d-none");
-        }, 3500); 
-    }
-});
-
-$('#menuForm').on('submit', function(e) {
-    const checkoutBtn = $('#checkoutBtn');
-
-    if (checkoutBtn.prop('disabled')) {
-        // If already disabled, prevent double submission
-        e.preventDefault();
-        return false;
+        const bar = document.getElementById('floatingBar');
+        if (itemCount > 0) {
+            bar.classList.add('visible');
+        } else {
+            bar.classList.remove('visible');
+        }
     }
 
-    // Format phone only if M-Pesa is selected
-    if(paymentMethod.value === "M-Pesa"){
-        let formatted = formatPhoneNumber(phoneInput.value);
-        phoneInput.value = formatted;
+    // ── Method / phone logic ──
+    const methodSel  = document.getElementById('paymentMethod');
+    const phoneInput = document.getElementById('phoneInput');
+    const phoneError = document.getElementById('phoneError');
+
+    function syncMethodPhone() {
+        const isMpesa = methodSel.value === 'M-Pesa';
+        phoneInput.readOnly  = !isMpesa;
+        phoneInput.required  = isMpesa;
+        phoneInput.style.background  = isMpesa ? '#fff' : '#f4f4f4';
+        phoneInput.style.color       = isMpesa ? '#222' : '#aaa';
+        phoneInput.style.cursor      = isMpesa ? 'text' : 'not-allowed';
+        if (!isMpesa) { phoneInput.value = ''; phoneError.style.display = 'none'; }
     }
+    syncMethodPhone();
+    methodSel.addEventListener('change', syncMethodPhone);
 
-    // Disable the button immediately
-    checkoutBtn.prop('disabled', true);
-    checkoutBtn.text('Processing...'); // optional: show feedback
-});
-$('#menuForm').on('invalid', function() {
-    $('#checkoutBtn').prop('disabled', false).text('Checkout');
-});
+    // ── Submit order ──
+    window.submitOrder = function() {
+        const method   = methodSel.value;
+        const phone    = phoneInput.value.trim();
+        const selected = Object.keys(state);
 
-function formatPhoneNumber(phone) {
-    phone = phone.replace(/\D/g, ""); // remove any non-numeric characters
+        if (selected.length === 0) {
+            showToast('Please select at least one item first.');
+            return;
+        }
+        if (method === 'M-Pesa' && !phone) {
+            phoneError.style.display = 'block';
+            phoneInput.focus();
+            return;
+        }
 
-    if(phone.startsWith("0") && phone.length === 10){
-        // Replace leading 0 with 254
-        return "254" + phone.slice(1);
-    } else if(phone.startsWith("7") && phone.length === 9){
-        // Sometimes user enters without 0 or 254
-        return "254" + phone;
-    }else if(phone.startsWith("1") && phone.length === 9){
-        // Sometimes user enters without 0 or 254
-        return "254" + phone;
-    } else if(phone.startsWith("254") && phone.length === 12){
-        return phone; // already correct
-    } else {
-        return phone; // fallback: send as-is (will fail STK if wrong)
-    }
-}
-});
+        const btn = document.getElementById('checkoutBtn');
+        btn.disabled    = true;
+        btn.textContent = 'Processing…';
+
+        // Format phone
+        let fmtPhone = phone.replace(/\D/g, '');
+        if (fmtPhone.startsWith('0')   && fmtPhone.length === 10) fmtPhone = '254' + fmtPhone.slice(1);
+        else if (fmtPhone.startsWith('7') && fmtPhone.length === 9)  fmtPhone = '254' + fmtPhone;
+        else if (fmtPhone.startsWith('1') && fmtPhone.length === 9)  fmtPhone = '254' + fmtPhone;
+
+        // Write hidden inputs
+        const form    = document.getElementById('menuForm');
+        const hidden  = document.getElementById('hiddenInputs');
+        hidden.innerHTML = '';
+
+        // Method + phone
+        document.getElementById('formMethod').value = method;
+        document.getElementById('formPhone').value  = method === 'M-Pesa' ? fmtPhone : '';
+
+        // Items + quantities
+        selected.forEach(id => {
+            const qty = state[id];
+            if (qty > 0) {
+                const cbInput = document.createElement('input');
+                cbInput.type  = 'hidden';
+                cbInput.name  = 'items';
+                cbInput.value = id;
+                hidden.appendChild(cbInput);
+
+                const qtyInput = document.createElement('input');
+                qtyInput.type  = 'hidden';
+                qtyInput.name  = `qty_${id}`;
+                qtyInput.value = qty;
+                hidden.appendChild(qtyInput);
+            }
+        });
+
+        form.submit();
+    };
+
+    // ── Toast ──
+    window.showToast = function(msg) {
+        const t = document.getElementById('centerToast');
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 2800);
+    };
+
+    // Run on load
+    updateTotal();
+})();
 </script>
 </body>
 </html>

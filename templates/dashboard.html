@@ -4,282 +4,506 @@
     <meta charset="UTF-8">
     <title>FedhaFlow Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <style>
-        .main-container, .table{
-            max-width: 800px;
+        .main-container { max-width: 980px; }
+        body { padding-top: 30px; font-family: 'DM Sans', sans-serif;}
+        .status-pending   { background-color: #fff3cd; }
+        .status-confirmed { background-color: #d4edda; }
+        .status-failed    { background-color: #f8d7da; }
+        .flash-message {
+            position: fixed; top: 10%; left: 50%;
+            transform: translate(-50%,-50%);
+            z-index:1000; width:90%; max-width:320px; text-align:center;
         }
-        .status-pending { 
-            background-color: #fff3cd; 
-        }   
-        .status-confirmed { 
-            background-color: #d4edda; 
-        } 
-        .status-failed { 
-            background-color: #f8d7da; 
-        }  
-        .flash-message { 
-            position: fixed;
-            top: 10%;
-            left: 50%;
-            transform: translate(-50%, -50%); /* centers horizontally & vertically */
-            z-index: 1000;
-            width: 90%;         /* responsive width */
-            max-width: 300px;   /* don’t get too wide on large screens */
-            text-align: center;
-        }.flash-message .btn-close {
-            position: absolute;
-            right: 10px;
+        .flash-message .btn-close { position:absolute; right:10px; }
+        .flash-message .alert     { padding-right:3rem; }
+        td,th { text-align:center; vertical-align:middle; }
+        .payment-row { cursor:pointer; }
+        .payment-row:hover { background-color:rgba(0,0,0,.04) !important; }
+        .table  { margin:auto; }
+        .modal .modal-dialog { max-width:420px; margin:auto; }
+        #confirm-note-wrapper { max-height:0; overflow:hidden; transition:max-height .3s ease; }
+        #confirm-note-wrapper.open { max-height:140px; }
+
+        /* Filter card */
+        .filter-card {
+            background:#fff; border-radius:10px;
+            box-shadow:0 2px 8px rgba(0,0,0,.07);
+            padding:14px 18px; margin-bottom:16px;
         }
-        .flash-message .alert {
-            padding-right: 3rem;  /* creates space for close button */
+        .filter-label {
+            font-size:.75rem; font-weight:600; color:#666;
+            text-transform:uppercase; letter-spacing:.04em; margin-bottom:5px;
         }
-        td, th{
-            text-align: center;
+        .btn-f {
+            font-size:.8rem; padding:3px 11px; border-radius:20px;
+            border:1.5px solid #ccc; background:#fff; color:#333;
+            cursor:pointer; transition:all .15s; white-space:nowrap;
+            line-height:1.5;
         }
-        .payment-row{
-            cursor:pointer;
+        .btn-f:hover  { border-color:#888; }
+        .btn-f.active { background:#1a5276; border-color:#1a5276; color:#fff; }
+
+        .summary-bar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; font-size:.85rem; justify-content:center; }
+        .s-pill { background:#eaf4fb; border-radius:20px; padding:3px 13px; color:#1a5276; font-weight:600; }
+        .s-pill.warn { background:#fff3cd; color:#856404; }
+        #no-results-row td { color:#999; font-style:italic; }
+        .filter-collapse {
+            overflow: auto;
+            transition: max-height .3s ease, opacity .3s ease;
+            max-height: 400px;
+            opacity: 1;
         }
-        .payment-row:hover{
-            background-color:#f1f1f1;
+        .filter-collapse.collapsed {
+            max-height: 0;
+            opacity: 0;
         }
-        .table{
-            margin:auto;
+        .filter-toggle-btn {
+            font-size: .78rem; font-weight: 600; color: #555;
+            background: none; border: 1.5px solid #ccc;
+            border-radius: 20px; padding: 3px 12px;
+            cursor: pointer; transition: all .15s;
+            display: flex; align-items: center; gap: 5px;
         }
-        .modal .modal-dialog{
-            max-width: 400px;
-            margin: auto;
+        .filter-toggle-btn:hover { border-color: #888; color: #222; }
+        .filter-toggle-btn .chevron {
+            display: inline-block;
+            transition: transform .25s ease;
+            font-style: normal;
         }
+        .filter-toggle-btn.collapsed .chevron { transform: rotate(-180deg); }
     </style>
 </head>
 <body>
-<div class="main-container py-2 m-auto px-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <a href="{{ url_for('home') }}" class="btn btn-secondary">Back</a>
-        <a href="{{ url_for('menu') }}" class="btn btn-primary">Menu</a>
-    </div>
-    <h1 class="text-center">Payments Dashboard</h1>
+{% include '_mode_banner.html' %}
+<div class="main-container py-2 m-auto px-3">
 
-    <!-- Total Sales -->
-    {% set total_sales = payments | selectattr('status','equalto','Confirmed') | map(attribute='amount') | sum %}
-    <div class="alert alert-info text-center">
-        Total Sales (Confirmed): KES <span id="total-sales">{{ total_sales }}</span>
+    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+        <a href="{{ url_for('home') }}" class="btn btn-secondary btn-sm">← Back</a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('insights') }}"  class="btn btn-outline-info btn-sm">🤖 Insights</a>
+            <a href="{{ url_for('reports') }}"   class="btn btn-outline-success btn-sm">📊 Reports</a>
+            <a href="{{ url_for('menu') }}"      class="btn btn-primary btn-sm">+ New Order</a>
+        </div>
     </div>
 
-    <!-- Flash messages -->
+    <h4 class="text-center mb-2">Payments Dashboard</h4>
+
+    <!-- Summary pills -->
+    <div class="summary-bar">
+        <span class="s-pill">Confirmed: KES <span id="sum-total">0</span></span>
+        <span class="s-pill">Orders shown: <span id="sum-count">0</span></span>
+        <span class="s-pill warn" id="sum-pending-pill" style="display:none;">
+            Pending: <span id="sum-pending">0</span>
+        </span>
+    </div>
+
+    <!-- Filter toggle -->
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="small text-muted fw-semibold">Filters</span>
+        <button class="filter-toggle-btn collapsed" id="filterToggleBtn" onclick="toggleFilters()">
+            <i class="chevron">▲</i> Show Filters
+        </button>
+    </div>
+
+    <div class="filter-collapse collapsed" id="filterCollapse">
+        <!-- Filter card -->
+        <div class="filter-card">
+            <div class="row g-2 mb-2">
+                <div class="col-12 col-md-5">
+                    <div class="filter-label">Status</div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button class="btn-f active" data-fg="status" data-fv="all">All</button>
+                        <button class="btn-f" data-fg="status" data-fv="Confirmed">✅ Confirmed</button>
+                        <button class="btn-f" data-fg="status" data-fv="Pending">⏳ Pending</button>
+                    </div>
+                </div>
+                <div class="col-12 col-md-7">
+                    <div class="filter-label">Payment Method</div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button class="btn-f active" data-fg="method" data-fv="all">All</button>
+                        <button class="btn-f" data-fg="method" data-fv="Cash">💵 Cash</button>
+                        <button class="btn-f" data-fg="method" data-fv="M-Pesa">📲 M-Pesa Till</button>
+                        <button class="btn-f" data-fg="method" data-fv="Phone">📞 M-Pesa Phone</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-2 mb-2">
+                <div class="col-12">
+                    <div class="filter-label">Date</div>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <button class="btn-f active" data-fg="date" data-fv="today">Today</button>
+                        <button class="btn-f" data-fg="date" data-fv="week">This Week</button>
+                        <button class="btn-f" data-fg="date" data-fv="month">This Month</button>
+                        <button class="btn-f" data-fg="date" data-fv="all">All Time</button>
+                        <div class="d-flex gap-1 align-items-center ms-auto flex-wrap">
+                            <input type="date" id="dateFrom" class="form-control form-control-sm" style="width:138px;">
+                            <span class="text-muted small">→</span>
+                            <input type="date" id="dateTo"   class="form-control form-control-sm" style="width:138px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-2">
+                <div class="col-12 col-md-9">
+                    <div class="filter-label">Search (phone · item names · qty e.g. "2 smokies chapati")</div>
+                    <input type="text" id="searchInput" class="form-control form-control-sm"
+                        placeholder="0712345678  or  smokies chapati  or  2 hotdog or any amount">
+                </div>
+                <div class="col-12 col-md-3 d-flex align-items-end">
+                    <button class="btn btn-outline-secondary btn-sm w-100" id="clearBtn">✕ Clear Filters</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flash -->
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="flash-message">
         {% for category, message in messages %}
-          <div class="alert alert-{{ 'success' if category=='success' else 'warning' }}">{{ message }}
-            <button type="button" class="btn-close ms-2" data-bs-dismiss="alert" aria-label="Close"></button>
+          <div class="alert alert-{{ 'success' if category=='success' else 'warning' if category=='warning' else 'info' if category=='info' else 'danger' }}">
+            {{ message }}
+            <button type="button" class="btn-close ms-2" data-bs-dismiss="alert"></button>
           </div>
         {% endfor %}
         </div>
       {% endif %}
     {% endwith %}
 
-    <table class="table table-striped table-bordered">
-        <thead>
+    <!-- Table -->
+    <div class="table-responsive">
+    <table class="table table-striped table-bordered table-sm">
+        <thead class="table-dark">
             <tr>
-                <th>ID</th>
-                <th>Phone</th>
-                <th>Amount</th>
-                <th>Method</th>
-                <th>Status</th>
+                <th>#</th><th>Phone</th><th>Items</th>
+                <th>Amount</th><th>Method</th><th>Status</th><th>Date</th>
             </tr>
         </thead>
         <tbody id="payments-table">
             {% for p in payments %}
             <tr class="status-{{ p.status | lower }} payment-row"
                 data-id="{{ p.id }}"
-                data-phone="{{ p.phone }}"
-                data-amount="{{ p.amount|format_currency }}"
+                data-phone="{{ p.phone or '' }}"
+                data-amount-raw="{{ p.amount }}"
+                data-amount="{{ p.amount | format_currency }}"
                 data-method="{{ p.method }}"
+                data-pay-channel="{{ p.pay_channel or '' }}"
                 data-status="{{ p.status }}"
-                data-items='[
-                    {% for item in p.order_items %}
-                    {"name":"{{ item.menu_item.name }}","qty":{{ item.quantity }},"price":{{ item.price }}}
-                    {% if not loop.last %},{% endif %}
-                    {% endfor %}
-                ]'
+                data-notes="{{ p.notes or '' }}"
+                data-date="{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '' }}"
+                data-items-text="{{ p.order_items | map(attribute='menu_item') | map(attribute='name') | join(' ') | lower }}"
+                data-items-detail="{% for oi in p.order_items %}{{ oi.quantity }}x{{ oi.menu_item.name | lower }}{% if not loop.last %} {% endif %}{% endfor %}"
+                data-items='[{% for item in p.order_items %}{"name":"{{ item.menu_item.name }}","qty":{{ item.quantity }},"price":{{ item.price }}}{% if not loop.last %},{% endif %}{% endfor %}]'
             >
                 <td>{{ p.id }}</td>
-                <td>
-                    {% if p.method == "Cash" %}
-                        —
-                    {% else %}
-                        {{ p.phone }}
-                    {% endif %}
+                <td style="font-size:.85rem;">{% if p.method == "Cash" %}—{% else %}{{ p.phone }}{% endif %}</td>
+                <td class="text-start" style="font-size:.78rem;">
+                    {% for oi in p.order_items %}{{ oi.quantity }}× {{ oi.menu_item.name }}{% if not loop.last %}, {% endif %}{% endfor %}
                 </td>
-                <td>{{ p.amount|format_currency }}</td>
+                <td>{{ p.amount | format_currency }}</td>
                 <td>
-                    {% if p.method == "Cash" %}
-                        <span class="badge bg-secondary">Cash</span>
-                    {% else %}
-                        <span class="badge bg-success">M-Pesa</span>
-                    {% endif %}
+                    {% if p.method == "Cash" %}<span class="badge bg-secondary">Cash</span>
+                    {% elif p.pay_channel == "Phone" %}<span class="badge bg-info text-dark">M-Pesa 📞</span>
+                    {% else %}<span class="badge bg-success">M-Pesa 📲</span>{% endif %}
                 </td>
-                <td>{{ p.status }}</td>
+                <td>
+                    <span class="badge {{ 'bg-success' if p.status == 'Confirmed' else 'bg-warning text-dark' }}">
+                        {{ p.status }}
+                    </span>
+                </td>
+                <td style="font-size:.75rem; white-space:nowrap;">
+                    {{ p.created_at.strftime('%d %b, %H:%M') if p.created_at else '—' }}
+                </td>
             </tr>
             {% endfor %}
+            <tr id="no-results-row" style="display:none;">
+                <td colspan="7">No orders match your current filters.</td>
+            </tr>
         </tbody>
     </table>
+    </div>
 </div>
 
-<!-- Order Details Modal -->
+<!-- Modal -->
 <div class="modal fade" id="orderModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-
       <div class="modal-header">
         <h5 class="modal-title">Order Details</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-
       <div class="modal-body">
-
         <p><strong>ID:</strong> <span id="modal-id"></span></p>
         <p><strong>Phone:</strong> <span id="modal-phone"></span></p>
         <p><strong>Method:</strong> <span id="modal-method"></span></p>
         <p><strong>Status:</strong> <span id="modal-status"></span></p>
-
+        <p id="modal-notes-row" class="d-none text-muted fst-italic">
+            <strong>Note:</strong> <span id="modal-notes"></span>
+        </p>
         <hr>
-
         <h6>Items</h6>
-
         <ul id="modal-items" class="list-group mb-3"></ul>
-
-        <h5 class="text-end">
-            Total: KES <span id="modal-total"></span>
-        </h5>
-        <!-- Resend STK Push Button -->
-        <div id="modal-resend-wrapper" class="text-center mt-3 d-none">
-            <a id="modal-resend-btn" href="#" class="btn btn-warning btn-sm">
-                🔁 Resend STK Push
-            </a>
-            <small class="d-block text-muted mt-1">Use this if the prompt timed out, wrong PIN was entered, or an error occurred.</small>
+        <h5 class="text-end">Total: KES <span id="modal-total"></span></h5>
+        <hr>
+        <div class="d-grid mb-2">
+            <a id="modal-edit-btn" href="#" class="btn btn-outline-primary btn-sm">✏️ Edit Order</a>
+        </div>
+        <div id="modal-resend-wrapper" class="d-none mb-2">
+            <div class="d-grid">
+                <a id="modal-resend-btn" href="#" class="btn btn-warning btn-sm">🔁 Resend STK Push</a>
+            </div>
+            <small class="d-block text-muted text-center mt-1">Use if prompt timed out, wrong PIN, or error.</small>
+        </div>
+        <div id="modal-confirm-wrapper" class="d-none mb-2">
+            <div class="d-grid mb-1">
+                <button type="button" class="btn btn-success btn-sm" id="modal-confirm-toggle">✅ Mark as Confirmed</button>
+            </div>
+            <div id="confirm-note-wrapper">
+                <form id="confirm-manual-form" method="POST" action="">
+                    <div class="mb-2 mt-2">
+                        <input type="text" name="note" class="form-control form-control-sm"
+                               placeholder="Paid through phone (leave blank for default)">
+                        <small class="text-muted">Leave blank → <em>"Paid through phone"</em></small>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-success btn-sm">Confirm Payment</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="d-grid mt-3">
+            <form id="modal-delete-form" method="POST" action="">
+                <button type="submit" class="btn btn-outline-danger btn-sm w-100"
+                        onclick="return confirm('Delete this order? Cannot be undone.')">
+                    🗑 Delete Order
+                </button>
+            </form>
         </div>
       </div>
-
     </div>
   </div>
 </div>
 
-<!-- Bootstrap JS & dependencies -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-    // Auto-fade flash messages after 5 seconds
-    setTimeout(() => {
-        const flashes = document.querySelectorAll('.flash-message .alert');
-        flashes.forEach(f => f.style.display = 'none');
-    }, 5000);
+function toggleFilters() {
+    const collapse = document.getElementById('filterCollapse');
+    const btn      = document.getElementById('filterToggleBtn');
+    const chevron  = btn.querySelector('.chevron');
+    const isOpen   = !collapse.classList.contains('collapsed');
 
-    $(document).off('click',".payment-row").on('click',".payment-row", function(){
-        const id = this.dataset.id;
-        const phone = this.dataset.phone || "—";
-        const method = this.dataset.method;
-        const status = this.dataset.status;
-        const amount = this.dataset.amount;
-        const items = JSON.parse(this.dataset.items);
+    collapse.classList.toggle('collapsed', isOpen);
+    btn.classList.toggle('collapsed', isOpen);
+    btn.innerHTML = isOpen
+        ? '<i class="chevron" style="display:inline-block;transform:rotate(-180deg);transition:transform .25s ease;">▲</i> Show Filters'
+        : '<i class="chevron" style="display:inline-block;transition:transform .25s ease;">▲</i> Hide Filters';
+}
 
-        document.getElementById("modal-id").innerText = id;
-        document.getElementById("modal-phone").innerText = phone;
-        document.getElementById("modal-method").innerText = method;
-        document.getElementById("modal-status").innerText = status;
-        document.getElementById("modal-total").innerText = amount;
+// ── State ──
+const F = { status:'all', method:'all', dateFrom:'', dateTo:'', search:'' };
 
-        const list = document.getElementById("modal-items");
-        list.innerHTML = "";
+function toISO(d){ return d.toISOString().split('T')[0]; }
 
-        items.forEach(item => {
-            const li = document.createElement("li");
-            li.className = "list-group-item d-flex justify-content-between";
-            li.innerHTML = `
-                <span>${item.qty} × ${item.name}</span>
-                <span>KES ${item.price}</span>
-            `;
-            list.appendChild(li);
-        });
+// Default: today
+(function(){
+    const t = toISO(new Date());
+    F.dateFrom = F.dateTo = t;
+    document.getElementById('dateFrom').value = t;
+    document.getElementById('dateTo').value   = t;
+})();
 
-        // Show/hide resend button based on status and method
-        const resendWrapper = document.getElementById("modal-resend-wrapper");
-        const resendBtn = document.getElementById("modal-resend-btn");
+// ── Preset date buttons ──
+function applyPreset(v){
+    const now = new Date(); let from = new Date(now), to = new Date(now);
+    if(v==='week'){ from.setDate(now.getDate()-now.getDay()); }
+    else if(v==='month'){ from = new Date(now.getFullYear(), now.getMonth(), 1); }
+    else if(v==='all'){
+        F.dateFrom=F.dateTo='';
+        document.getElementById('dateFrom').value='';
+        document.getElementById('dateTo').value='';
+        applyFilters(); return;
+    }
+    F.dateFrom = toISO(from); F.dateTo = toISO(to);
+    document.getElementById('dateFrom').value = F.dateFrom;
+    document.getElementById('dateTo').value   = F.dateTo;
+    applyFilters();
+}
 
-        if (method === "M-Pesa" && status === "Pending") {
-            resendBtn.href = `/resend-stk/${id}`;
-            resendWrapper.classList.remove("d-none");
-        } else {
-            resendWrapper.classList.add("d-none");
+// ── Button clicks ──
+document.querySelectorAll('.btn-f').forEach(btn => {
+    btn.addEventListener('click', function(){
+        const fg = this.dataset.fg, fv = this.dataset.fv;
+        document.querySelectorAll(`[data-fg="${fg}"]`).forEach(b=>b.classList.remove('active'));
+        this.classList.add('active');
+        if(fg==='status') { F.status=fv; applyFilters(); }
+        if(fg==='method') { F.method=fv; applyFilters(); }
+        if(fg==='date')   { applyPreset(fv); }
+    });
+});
+
+document.getElementById('dateFrom').addEventListener('change', function(){
+    F.dateFrom = this.value;
+    document.querySelectorAll('[data-fg="date"]').forEach(b=>b.classList.remove('active'));
+    applyFilters();
+});
+document.getElementById('dateTo').addEventListener('change', function(){
+    F.dateTo = this.value;
+    document.querySelectorAll('[data-fg="date"]').forEach(b=>b.classList.remove('active'));
+    applyFilters();
+});
+document.getElementById('searchInput').addEventListener('input', function(){
+    F.search = this.value.trim().toLowerCase(); applyFilters();
+});
+document.getElementById('clearBtn').addEventListener('click', function(){
+    F.status='all'; F.method='all'; F.dateFrom=''; F.dateTo=''; F.search='';
+    document.querySelectorAll('.btn-f').forEach(b=>b.classList.remove('active'));
+    document.querySelector('[data-fg="status"][data-fv="all"]').classList.add('active');
+    document.querySelector('[data-fg="method"][data-fv="all"]').classList.add('active');
+    document.getElementById('dateFrom').value='';
+    document.getElementById('dateTo').value='';
+    document.getElementById('searchInput').value='';
+    applyFilters();
+});
+
+// ── Core filter ──
+function rowMatchesSearch(row, terms){
+    if(!terms.length) return true;
+    console.log(terms)
+    const phone  = (row.dataset.phone||'').toLowerCase();
+    const itext  = (row.dataset.itemsText||'').toLowerCase();
+    const idetail= (row.dataset.itemsDetail||'').toLowerCase();
+    const price= (row.dataset.amount||'').toLowerCase();
+    return terms.every(term=>{
+        const qm = term.match(/^(\d+)x$/);
+        if(qm) return idetail.includes(qm[1]+'x');
+        return phone.includes(term)||itext.includes(term)||
+                idetail.includes(term)||price.includes(term);
+    });
+}
+
+function applyFilters(){
+    const rows  = document.querySelectorAll('#payments-table .payment-row');
+    const terms = F.search ? F.search.split(/\s+/).filter(Boolean) : [];
+    let cnt=0, total=0, pending=0;
+
+    rows.forEach(r=>{
+        const rs = r.dataset.status||'', rm = r.dataset.method||'',
+              rc = r.dataset.payChannel||'', rd = r.dataset.date||'',
+              ra = parseFloat(r.dataset.amountRaw||0);
+        let show=true;
+        if(F.status!=='all' && rs!==F.status) show=false;
+        if(show && F.method!=='all'){
+            if(F.method==='Cash'  && rm!=='Cash')  show=false;
+            if(F.method==='M-Pesa'&&(rm!=='M-Pesa'||rc==='Phone')) show=false;
+            if(F.method==='Phone' && rc!=='Phone') show=false;
         }
-        // Proper Bootstrap JS to show modal
-        $('#orderModal').modal('show');
+        if(show && F.dateFrom && rd < F.dateFrom) show=false;
+        if(show && F.dateTo   && rd > F.dateTo)   show=false;
+        if(show && !rowMatchesSearch(r, terms))    show=false;
+        r.style.display = show?'':'none';
+        if(show){ cnt++; if(rs==='Confirmed') total+=ra; if(rs==='Pending') pending++; }
     });
 
-    // Connect to Socket.IO server
-    const socket = io();
+    document.getElementById('no-results-row').style.display = cnt===0?'':'none';
+    document.getElementById('sum-total').innerText   = total.toLocaleString('en-KE',{maximumFractionDigits:0});
+    document.getElementById('sum-count').innerText   = cnt;
+    document.getElementById('sum-pending').innerText = pending;
+    document.getElementById('sum-pending-pill').style.display = pending>0?'':'none';
+}
 
-    // Listen for payment updates
-    socket.on('payment_update', (p) => {
-        const table = document.getElementById("payments-table");
+applyFilters();
 
-        // Check if row exists
-        let row = document.querySelector(`tr[data-id='${p.id}']`);
-        if(!row){
-            // Create new row
-            let rowClass = "status-" + p.status.toLowerCase();
-            let methodBadge =
-                p.method === "Cash"
-                ? '<span class="badge bg-secondary">Cash</span>'
-                : '<span class="badge bg-success">M-Pesa</span>';
+// ── Modal ──
+$(document).off('click','.payment-row').on('click','.payment-row',function(){
+    const id=this.dataset.id, phone=this.dataset.phone||'—',
+          method=this.dataset.method, payChannel=this.dataset.payChannel||'',
+          status=this.dataset.status, amount=this.dataset.amount,
+          notes=this.dataset.notes||'', items=JSON.parse(this.dataset.items);
 
-            let phone = p.method === "Cash" ? "—" : p.phone;
+    document.getElementById('modal-id').innerText=id;
+    document.getElementById('modal-phone').innerText=phone;
+    document.getElementById('modal-status').innerText=status;
+    document.getElementById('modal-total').innerText=amount;
+    let ml=method;
+    if(method==='M-Pesa'&&payChannel==='Phone') ml='M-Pesa (Phone)';
+    else if(method==='M-Pesa') ml='M-Pesa (Till/STK)';
+    document.getElementById('modal-method').innerText=ml;
 
-            row = document.createElement("tr");
-            row.className = rowClass + " payment-row";
-            row.dataset.id = p.id;
-            row.dataset.phone = p.phone;
-            row.dataset.amount = p.amount;
-            row.dataset.method = p.method;
-            row.dataset.status = p.status;
-            row.dataset.items = JSON.stringify(p.items);
+    const nr=document.getElementById('modal-notes-row');
+    if(notes){ document.getElementById('modal-notes').innerText=notes; nr.classList.remove('d-none'); }
+    else nr.classList.add('d-none');
 
-            row.innerHTML = `
-                <td>${p.id}</td>
-                <td>${phone}</td>
-                <td>${p.amount}</td>
-                <td>${methodBadge}</td>
-                <td>${p.status}</td>
-            `;
-            table.prepend(row); // newest first
-        } else {
-            // Update existing row status, amount, etc.
-            row.dataset.status = p.status;
-            row.dataset.amount = p.amount;
-            row.dataset.items = JSON.stringify(p.items);
-            row.className = "status-" + p.status.toLowerCase() + " payment-row";
-            row.cells[2].innerText = p.amount;
-            row.cells[4].innerText = p.status;
-
-            let methodBadge =
-                p.method === "Cash"
-                ? '<span class="badge bg-secondary">Cash</span>'
-                : '<span class="badge bg-success">M-Pesa</span>';
-            row.cells[3].innerHTML = methodBadge;
-        }
-
-        // Update total sales if payment is confirmed
-        let totalElem = document.getElementById("total-sales");
-        let currentTotal = parseFloat(totalElem.innerText.replace(/,/g,''));
-        if(p.status === "Confirmed"){
-            currentTotal += parseFloat(p.amount);
-            totalElem.innerText = currentTotal.toLocaleString();
-        }
+    const list=document.getElementById('modal-items');
+    list.innerHTML='';
+    items.forEach(item=>{
+        const li=document.createElement('li');
+        li.className='list-group-item d-flex justify-content-between';
+        li.innerHTML=`<span>${item.qty} × ${item.name}</span><span>KES ${item.price}</span>`;
+        list.appendChild(li);
     });
 
+    document.getElementById('modal-edit-btn').href=`/edit-order/${id}`;
+    document.getElementById('modal-delete-form').action=`/delete-order/${id}`;
+
+    const rw=document.getElementById('modal-resend-wrapper');
+    if(method==='M-Pesa'&&status==='Pending'){
+        document.getElementById('modal-resend-btn').href=`/resend-stk/${id}`;
+        rw.classList.remove('d-none');
+    } else rw.classList.add('d-none');
+
+    const cw=document.getElementById('modal-confirm-wrapper');
+    const nw=document.getElementById('confirm-note-wrapper');
+    const cf=document.getElementById('confirm-manual-form');
+    if(method==='M-Pesa'&&status==='Pending'){
+        cf.action=`/confirm-manual/${id}`; cw.classList.remove('d-none'); nw.classList.remove('open');
+    } else cw.classList.add('d-none');
+
+    $('#orderModal').modal('show');
+});
+
+document.getElementById('modal-confirm-toggle').addEventListener('click',function(){
+    document.getElementById('confirm-note-wrapper').classList.toggle('open');
+});
+
+setTimeout(()=>document.querySelectorAll('.flash-message .alert').forEach(f=>f.style.display='none'),5000);
+
+// ── Sockets ──
+const socket=io();
+socket.on('payment_update',p=>{
+    let row=document.querySelector(`tr[data-id='${p.id}']`);
+    const table=document.getElementById('payments-table');
+    const mb=p.method==='Cash'?'<span class="badge bg-secondary">Cash</span>':
+              p.pay_channel==='Phone'?'<span class="badge bg-info text-dark">M-Pesa 📞</span>':
+              '<span class="badge bg-success">M-Pesa 📲</span>';
+    const sb=p.status==='Confirmed'?'<span class="badge bg-success">Confirmed</span>':
+              '<span class="badge bg-warning text-dark">Pending</span>';
+    const ph=p.method==='Cash'?'—':(p.phone||'—');
+    const itext=(p.items||[]).map(i=>i.name.toLowerCase()).join(' ');
+    const idetail=(p.items||[]).map(i=>`${i.qty}x${i.name.toLowerCase()}`).join(' ');
+    const idisp=(p.items||[]).map(i=>`${i.qty}× ${i.name}`).join(', ');
+    const today=toISO(new Date());
+    if(!row){ row=document.createElement('tr'); table.prepend(row); }
+    row.className='status-'+p.status.toLowerCase()+' payment-row';
+    Object.assign(row.dataset,{id:p.id,phone:p.phone||'',amountRaw:p.amount,
+        amount:p.amount,method:p.method,payChannel:p.pay_channel||'',
+        status:p.status,notes:p.notes||'',date:today,
+        itemsText:itext,itemsDetail:idetail,items:JSON.stringify(p.items)});
+    row.innerHTML=`<td>${p.id}</td><td style="font-size:.85rem;">${ph}</td>
+        <td class="text-start" style="font-size:.78rem;">${idisp}</td>
+        <td>${p.amount}</td><td>${mb}</td><td>${sb}</td>
+        <td style="font-size:.75rem;white-space:nowrap;">Today</td>`;
+    applyFilters();
+});
+socket.on('payment_deleted',d=>{
+    const r=document.querySelector(`tr[data-id='${d.id}']`);
+    if(r){r.remove();applyFilters();}
+});
 </script>
 </body>
 </html>
