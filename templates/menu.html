@@ -6,303 +6,263 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <style>
-        /* ── Base ── */
         *, *::before, *::after { box-sizing: border-box; }
-        body {
-            font-family: 'DM Sans', sans-serif;
-            background: #f0f2f5;
-            padding-top: 30px;   /* for mode banner */
-            padding-bottom: 100px; /* space for floating bar */
-            margin: 0;
-        }
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f5; padding-top: 30px; padding-bottom: 110px; margin: 0; }
 
-        /* ── Mode banner (matches other pages) ── */
-        .mode-banner {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 9000;
-            text-align: center; font-size: .78rem; font-weight: 700;
-            padding: 4px 12px; letter-spacing: .05em;
-            display: flex; align-items: center; justify-content: center; gap: 8px;
-        }
-        .mode-banner.sandbox { background: #fff3cd; color: #856404; border-bottom: 2px solid #ffc107; }
-        .mode-banner.live    { background: #d1f0e0; color: #1e5631; border-bottom: 2px solid #1e8449; }
-        .mode-banner a       { color: inherit; text-decoration: underline; font-size: .75rem; }
+        /* Mode banner */
+        .mode-banner { position:fixed; top:0; left:0; right:0; z-index:9000; text-align:center; font-size:.78rem; font-weight:700; padding:4px 12px; letter-spacing:.05em; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .mode-banner.sandbox { background:#fff3cd; color:#856404; border-bottom:2px solid #ffc107; }
+        .mode-banner.live    { background:#d1f0e0; color:#1e5631; border-bottom:2px solid #1e8449; }
+        .mode-banner a       { color:inherit; text-decoration:underline; font-size:.75rem; }
 
-        /* ── Page wrapper ── */
         .page-wrap { max-width: 860px; margin: 0 auto; padding: 14px 14px 0; }
 
-        /* ── Top nav bar ── */
-        .top-nav {
-            display: flex; justify-content: space-between;
-            align-items: center; margin-bottom: 14px;
-        }
-        .btn-nav {
-            font-size: .82rem; font-weight: 600; padding: 7px 16px;
-            border-radius: 8px; border: none; cursor: pointer;
-            transition: all .15s;
-        }
-        .btn-nav.secondary { background: #e4e6ea; color: #333; }
-        .btn-nav.secondary:hover { background: #d0d2d6; }
-        .btn-nav.primary   { background: #1a5276; color: #fff; }
-        .btn-nav.primary:hover { background: #154360; }
+        /* Nav */
+        .top-nav { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:8px; }
+        .btn-nav.secondary { background:#e4e6ea; color:#333; }
+        .btn-nav.secondary:hover { background:#d0d2d6; }
+        .btn-nav.primary   { background:#1a5276; color:#fff; }
+        .btn-nav.primary:hover { background:#154360; }
+        .btn-nav.success   { background:#1e8449; color:#fff; }
+        .btn-nav.success:hover { background:#196f3d; }
 
-        /* ── Edit banner ── */
-        .edit-banner {
-            background: #fff3cd; border: 1.5px solid #ffc107;
-            border-radius: 10px; padding: 10px 16px;
-            margin-bottom: 14px; display: flex;
-            align-items: center; gap: 10px; font-size: .88rem;
-            font-weight: 500;
-        }
+        /* Edit banner */
+        .edit-banner { background:#fff3cd; border:1.5px solid #ffc107; border-radius:10px; padding:10px 16px; margin-bottom:14px; display:flex; align-items:center; gap:10px; font-size:.88rem; font-weight:500; }
 
-        /* ── Order config row (method + phone) ── */
-        .config-card {
-            background: #fff; border-radius: 12px;
-            box-shadow: 0 1px 6px rgba(0,0,0,.07);
-            padding: 14px 16px; margin-bottom: 16px;
-            display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
-        }
-        .config-field { display: flex; flex-direction: column; flex: 1; min-width: 160px; }
-        .config-field label {
-            font-size: .72rem; font-weight: 700; color: #777;
-            text-transform: uppercase; letter-spacing: .05em;
-            margin-bottom: 5px;
-        }
-        .config-field select,
-        .config-field input {
-            border: 1.5px solid #ddd; border-radius: 8px;
-            padding: 8px 11px; font-size: .9rem;
-            font-family: 'DM Sans', sans-serif;
-            outline: none; transition: border-color .15s;
-            background: #fff;
-        }
-        .config-field select:focus,
-        .config-field input:focus { border-color: #1a5276; }
-        .config-field input[readonly] { background: #f4f4f4; color: #aaa; cursor: not-allowed; }
-        .phone-error { color: #e74c3c; font-size: .75rem; margin-top: 4px; display: none; }
+        /* Config card */
+        .config-card { background:#fff; border-radius:12px; box-shadow:0 1px 6px rgba(0,0,0,.07); padding:14px 16px; margin-bottom:16px; display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+        .config-field { display:flex; flex-direction:column; flex:1; min-width:150px; }
+        .config-field label { font-size:.72rem; font-weight:700; color:#777; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px; }
+        .config-field select, .config-field input { border:1.5px solid #ddd; border-radius:8px; padding:8px 11px; font-size:.9rem; font-family:'DM Sans',sans-serif; outline:none; transition:border-color .15s, box-shadow .15s; background:#fff; }
+        .config-field select:focus, .config-field input:focus { border-color:#1a5276; box-shadow:0 0 0 3px rgba(26,82,118,.1); }
+        .config-field input[readonly] { background:#f4f4f4; color:#aaa; cursor:not-allowed; }
 
-        /* ── Section heading ── */
-        .section-label {
-            font-size: .72rem; font-weight: 700; color: #999;
-            text-transform: uppercase; letter-spacing: .08em;
-            margin-bottom: 10px; padding-left: 2px;
-        }
+        /* Error state */
+        .config-field.has-error select,
+        .config-field.has-error input { border-color:#e74c3c !important; box-shadow:0 0 0 3px rgba(231,76,60,.12) !important; }
+        .field-error { color:#e74c3c; font-size:.73rem; margin-top:4px; display:none; font-weight:500; }
+        .config-field.has-error .field-error { display:block; }
 
-        /* ── Item grid ── */
-        .items-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        @media (max-width: 600px) {
-            .items-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        }
+        /* Alert banner (inline) */
+        .alert-banner { border-radius:8px; padding:9px 14px; margin-bottom:12px; font-size:.85rem; font-weight:500; display:flex; align-items:flex-start; gap:8px; }
+        .alert-banner.warning  { background:#fff3cd; color:#856404; border:1px solid #ffc107; }
+        .alert-banner.danger   { background:#fdecea; color:#922b21; border:1px solid #e74c3c; }
+        .alert-banner.info     { background:#eaf4fb; color:#1a5276; border:1px solid #85c1e9; }
+        .alert-banner.success  { background:#eafaf1; color:#1e5631; border:1px solid #82e0aa; }
+        .alert-banner .ab-icon { font-size:1rem; flex-shrink:0; margin-top:1px; }
+        .alert-banner a { color:inherit; font-weight:700; }
 
-        /* ── Item card ── */
-        .item-card {
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 1px 5px rgba(0,0,0,.07);
-            overflow: hidden;
-            cursor: pointer;
-            position: relative;
-            transition: transform .15s, box-shadow .15s;
-            border: 2.5px solid transparent;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .item-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
-        .item-card:active { transform: scale(.97); }
+        /* Split info */
+        .split-info { width:100%; background:#eaf4fb; border-radius:8px; padding:8px 12px; font-size:.82rem; color:#1a5276; font-weight:600; display:none; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+        .split-info.show { display:flex; }
+        .split-info .cash-bal { color:#1e8449; }
+        .split-info .cash-bal.zero { color:#999; }
 
-        /* Selected state */
-        .item-card.selected {
-            border-color: #1a5276;
-            box-shadow: 0 0 0 3px rgba(26,82,118,.15), 0 2px 8px rgba(0,0,0,.08);
-        }
+        /* No-STK row */
+        .no-stk-row { width:100%; display:flex; align-items:center; gap:10px; background:#fff8e6; border-radius:8px; padding:8px 12px; font-size:.82rem; font-weight:600; color:#856404; }
+        .no-stk-row input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:#1a5276; }
 
-        /* Checkmark badge */
-        .item-card .check-badge {
-            position: absolute; top: 8px; right: 8px;
-            width: 24px; height: 24px; border-radius: 50%;
-            background: #1a5276; color: #fff;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 13px; font-weight: 700;
-            opacity: 0; transform: scale(.5);
-            transition: opacity .15s, transform .2s cubic-bezier(.34,1.56,.64,1);
-        }
-        .item-card.selected .check-badge { opacity: 1; transform: scale(1); }
+        /* Customer quick-add */
+        .customer-quick { background:#f4f6f9; border-radius:8px; padding:6px 10px; display:none; align-items:center; gap:8px; font-size:.8rem; color:#555; margin-top:6px; }
+        .customer-quick button { font-size:.75rem; padding:3px 8px; border-radius:6px; border:1px solid #1a5276; background:#fff; color:#1a5276; cursor:pointer; }
+        .customer-quick button:hover { background:#1a5276; color:#fff; }
 
-        /* Image */
-        .item-card .item-img {
-            width: 100%; height: 110px; object-fit: cover;
-            display: block; pointer-events: none;
-        }
+        /* Section label */
+        .section-label { font-size:.72rem; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; padding-left:2px; }
 
-        /* Card body */
-        .item-card .item-body {
-            padding: 8px 10px 10px;
-        }
-        .item-card .item-name {
-            font-size: .88rem; font-weight: 700;
-            color: #222; margin-bottom: 2px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .item-card .item-price {
-            font-size: .8rem; color: #1a5276; font-weight: 600; margin-bottom: 8px;
-        }
+        /* Items grid */
+        .items-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:16px; }
+        @media (max-width:600px) { .items-grid { grid-template-columns:repeat(2, 1fr); gap:10px; } }
 
-        /* Qty stepper — only visible when selected */
-        .item-card .qty-row {
-            display: flex; align-items: center; justify-content: center;
-            gap: 0; height: 0; overflow: hidden; opacity: 0;
-            transition: height .2s ease, opacity .2s ease, margin .2s ease;
-            margin-top: 0;
-        }
-        .item-card.selected .qty-row {
-            height: 38px; opacity: 1; margin-top: 2px;
-        }
-        .qty-btn {
-            width: 36px; height: 36px; border-radius: 8px;
-            border: 1.5px solid #1a5276; background: #fff;
-            color: #1a5276; font-size: 1.1rem; font-weight: 700;
-            cursor: pointer; display: flex; align-items: center;
-            justify-content: center; transition: all .12s;
-            flex-shrink: 0;
-        }
-        .qty-btn:hover { background: #1a5276; color: #fff; }
-        .qty-btn:active { transform: scale(.9); }
-        .qty-display {
-            width: 42px; height: 36px; text-align: center;
-            border: 1.5px solid #ddd; border-left: none; border-right: none;
-            font-size: .95rem; font-weight: 700; color: #222;
-            background: #f9f9f9; display: flex; align-items: center;
-            justify-content: center;
-        }
+        /* Item card */
+        .item-card { background:#fff; border-radius:12px; box-shadow:0 1px 5px rgba(0,0,0,.07); overflow:hidden; cursor:pointer; position:relative; transition:transform .15s, box-shadow .15s; border:2.5px solid transparent; user-select:none; -webkit-tap-highlight-color:transparent; }
+        .item-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.1); }
+        .item-card:active { transform:scale(.97); }
+        .item-card.selected { border-color:#1a5276; box-shadow:0 0 0 3px rgba(26,82,118,.15), 0 2px 8px rgba(0,0,0,.08); }
+        .item-card .check-badge { position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:#1a5276; color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; opacity:0; transform:scale(.5); transition:opacity .15s, transform .2s cubic-bezier(.34,1.56,.64,1); }
+        .item-card.selected .check-badge { opacity:1; transform:scale(1); }
+        .item-card .item-img { width:100%; height:110px; object-fit:cover; display:block; pointer-events:none; }
+        .item-card .item-body { padding:8px 10px 10px; }
+        .item-card .item-name { font-size:.88rem; font-weight:700; color:#222; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .item-card .item-price { font-size:.8rem; color:#1a5276; font-weight:600; margin-bottom:8px; }
+        .item-card .qty-row { display:flex; align-items:center; justify-content:center; height:0; overflow:hidden; opacity:0; transition:height .2s ease, opacity .2s ease, margin .2s ease; margin-top:0; }
+        .item-card.selected .qty-row { height:38px; opacity:1; margin-top:2px; }
+        .qty-btn { width:36px; height:36px; border-radius:8px; border:1.5px solid #1a5276; background:#fff; color:#1a5276; font-size:1.1rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .12s; flex-shrink:0; }
+        .qty-btn:hover { background:#1a5276; color:#fff; }
+        .qty-btn:active { transform:scale(.9); }
+        .qty-display { width:42px; height:36px; text-align:center; border:1.5px solid #ddd; border-left:none; border-right:none; font-size:.95rem; font-weight:700; color:#222; background:#f9f9f9; display:flex; align-items:center; justify-content:center; }
+        .hidden-inputs { display:none; }
 
-        /* Hidden inputs */
-        .hidden-inputs { display: none; }
+        /* Floating bar */
+        .floating-bar { position:fixed; bottom:0; left:0; right:0; z-index:8000; background:#1a5276; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; box-shadow:0 -4px 20px rgba(0,0,0,.18); transform:translateY(100%); transition:transform .3s cubic-bezier(.34,1.2,.64,1); }
+        .floating-bar.visible { transform:translateY(0); }
+        .bar-total { display:flex; flex-direction:column; }
+        .bar-label { font-size:.7rem; color:rgba(255,255,255,.7); font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+        .bar-amount { font-size:1.3rem; font-weight:700; color:#fff; line-height:1.1; }
+        .bar-items-count { font-size:.78rem; color:rgba(255,255,255,.75); background:rgba(255,255,255,.15); border-radius:20px; padding:3px 10px; font-weight:600; }
+        .btn-checkout { background:#fff; color:#1a5276; border:none; border-radius:10px; padding:11px 24px; font-size:.95rem; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all .15s; white-space:nowrap; }
+        .btn-checkout:hover { background:#eaf4fb; }
+        .btn-checkout:active { transform:scale(.97); }
+        .btn-checkout:disabled { opacity:.5; cursor:not-allowed; pointer-events:none; }
 
-        /* ── Floating total bar ── */
-        .floating-bar {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            z-index: 8000;
-            background: #1a5276;
-            padding: 12px 20px;
-            display: flex; align-items: center; justify-content: space-between;
-            gap: 12px;
-            box-shadow: 0 -4px 20px rgba(0,0,0,.18);
-            transform: translateY(100%);
-            transition: transform .3s cubic-bezier(.34,1.2,.64,1);
-        }
-        .floating-bar.visible { transform: translateY(0); }
+        /* Toast */
+        .center-toast { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,.82); color:#fff; padding:10px 22px; border-radius:10px; font-size:.9rem; z-index:9999; pointer-events:none; opacity:0; transition:opacity .2s; }
+        .center-toast.show { opacity:1; }
 
-        .bar-total {
-            display: flex; flex-direction: column;
+        /* ── Full page loader ── */
+        #pageLoader {
+            display: none;
+            position: fixed; inset: 0; z-index: 99999;
+            background: rgba(15, 30, 50, 0.72);
+            backdrop-filter: blur(3px);
+            flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 16px;
         }
-        .bar-total .bar-label { font-size: .7rem; color: rgba(255,255,255,.7); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
-        .bar-total .bar-amount { font-size: 1.3rem; font-weight: 700; color: #fff; line-height: 1.1; }
-
-        .bar-items-count {
-            font-size: .78rem; color: rgba(255,255,255,.75);
-            background: rgba(255,255,255,.15); border-radius: 20px;
-            padding: 3px 10px; font-weight: 600;
+        #pageLoader.show { display: flex; }
+        .loader-spinner {
+            width: 52px; height: 52px;
+            border: 4px solid rgba(255,255,255,.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
         }
-
-        .btn-checkout {
-            background: #fff; color: #1a5276;
-            border: none; border-radius: 10px;
-            padding: 11px 24px; font-size: .95rem;
-            font-weight: 700; cursor: pointer;
-            font-family: 'DM Sans', sans-serif;
-            transition: all .15s; white-space: nowrap;
-        }
-        .btn-checkout:hover   { background: #eaf4fb; }
-        .btn-checkout:active  { transform: scale(.97); }
-        .btn-checkout:disabled {
-            opacity: .5; cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        /* ── Toast ── */
-        .center-toast {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%,-50%);
-            background: rgba(0,0,0,.82); color: #fff;
-            padding: 10px 22px; border-radius: 10px;
-            font-size: .9rem; z-index: 9999;
-            pointer-events: none; opacity: 0;
-            transition: opacity .2s;
-        }
-        .center-toast.show { opacity: 1; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loader-text { color: #fff; font-size: 1rem; font-weight: 600; letter-spacing: .02em; }
+        .loader-sub  { color: rgba(255,255,255,.65); font-size: .82rem; }
     </style>
 </head>
 <body>
-{% include '_mode_banner.html' %}
-<div class="page-wrap">
 
-    <!-- Top nav -->
+{% include '_mode_banner.html' %}
+
+<!-- Full page loader -->
+<div id="pageLoader">
+    <div class="loader-spinner"></div>
+    <div class="loader-text" id="loaderText">Saving order…</div>
+    <div class="loader-sub">Please wait, don't close this page</div>
+</div>
+
+<div class="page-wrap">
+    <!-- Nav -->
     <div class="top-nav">
-        <a href="{{ url_for('home') }}" class="btn btn-secondary btn-sm">← Back</a>
-        <h5 style="margin:0; font-weight:700; color:#1a5276;">
+        <a href="{{ url_for('home') }}" class="btn btn-secondary btn-sm">← Main Menu</a>
+        <h5 style="margin:0; font-weight:700; color:#1a5276; flex:1; text-align:center;">
             {% if edit_payment %}✏️ Edit Order #{{ edit_payment.id }}{% else %}New Order{% endif %}
         </h5>
-        <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-sm">Dashboard</a>
+        {% if not edit_payment %}
+        <button class="btn-nav success" onclick="clearOrder()" title="Start a new blank order">🔄 New Order</button>
+        {% endif %}
+        <a href="{{ url_for('dashboard') }}" class="btn-nav primary">Dashboard</a>
     </div>
 
     {% if edit_payment %}
-    <div class="edit-banner">
-        ✏️ <span>Editing existing order. Tap items to change quantities, then tap <strong>Update Order</strong>.</span>
-    </div>
+    <div class="edit-banner">✏️ <span>Editing existing order. Adjust items, then tap <strong>Update Order</strong>.</span></div>
     {% endif %}
 
-    <!-- Order config -->
+    <!-- Alert area -->
+    <div id="alertArea"></div>
+
+    <!-- Config card -->
     <div class="config-card">
-        <div class="config-field">
+
+        <!-- Customer selector (full width) -->
+        <div class="config-field" style="min-width:100%; flex-basis:100%;">
+            <label>Customer (optional)</label>
+            <select id="customerSelect">
+                <option value="">— Walk-in customer —</option>
+            </select>
+            <div class="customer-quick" id="customerQuickAdd">
+                Not saved? <button type="button" onclick="quickSaveCustomer()">⭐ Save as regular</button>
+            </div>
+        </div>
+
+        <!-- Payment method -->
+        <div class="config-field" id="fieldMethod">
             <label>Payment Method</label>
-            <select id="paymentMethod" name="method">
-                <option value="Cash"  {% if edit_payment and edit_payment.method == "Cash"   %}selected{% endif %}>💵 Cash</option>
-                <option value="M-Pesa" {% if edit_payment and edit_payment.method == "M-Pesa" %}selected{% endif %}>📱 M-Pesa</option>
+            <select id="paymentMethod">
+                <option value="Cash"  {% if edit_payment and edit_payment.method == "Cash"  %}selected{% endif %}>💵 Cash</option>
+                <option value="M-Pesa"{% if edit_payment and edit_payment.method == "M-Pesa" and (not edit_payment.mpesa_amount or edit_payment.mpesa_amount == edit_payment.amount) %}selected{% endif %}>📱 M-Pesa</option>
+                <option value="Split" {% if edit_payment and edit_payment.method == "Split" %}selected{% endif %}>💳 Split (Cash + M-Pesa)</option>
             </select>
         </div>
-        <div class="config-field" id="phoneField">
-            <label>Phone Number</label>
-            <input type="tel" id="phoneInput" name="phone"
-                   placeholder="e.g. 0712 345 678"
-                   value="{{ edit_payment.phone if edit_payment and edit_payment.phone else '' }}">
-            <span class="phone-error" id="phoneError">Required for M-Pesa payments</span>
+
+        <!-- Payment account (M-Pesa / Split only) -->
+        <div class="config-field" id="fieldAccount" style="display:none;">
+            <label>Pay To (Account)</label>
+            <select id="accountSelect">
+                {% for acct in payment_accounts %}
+                <option value="{{ acct.id }}" {% if acct.is_default %}selected{% endif %}>
+                    {{ acct.name }} ({{ acct.account_type }} · {{ acct.shortcode }})
+                </option>
+                {% endfor %}
+                {% if not payment_accounts %}
+                <option value="">— No accounts configured —</option>
+                {% endif %}
+            </select>
+            <span class="field-error" id="accountError">Please select a payment account</span>
         </div>
+
+        <!-- Phone -->
+        <div class="config-field" id="fieldPhone" style="display:none;">
+            <label>Phone Number</label>
+            <input type="tel" id="phoneInput" placeholder="e.g. 0712 345 678" autocomplete="tel"
+                   value="{{ edit_payment.phone if edit_payment and edit_payment.phone else '' }}">
+            <span class="field-error" id="phoneError">Valid Kenyan number required (07XX, 01XX, or 254XX)</span>
+        </div>
+
+        <!-- M-Pesa amount (Split only) -->
+        <div class="config-field" id="fieldMpesaAmt" style="display:none;">
+            <label>M-Pesa Amount (KES)</label>
+            <input type="tel" id="mpesaAmtInput" placeholder="0"
+                   value="{{ edit_payment.mpesa_amount if edit_payment and edit_payment.mpesa_amount else '' }}">
+            <span class="field-error" id="mpesaAmtError">Enter a valid M-Pesa amount (less than total)</span>
+        </div>
+
+        <!-- Split live breakdown -->
+        <div class="split-info" id="splitInfo">
+            <span>📱 M-Pesa: <strong id="splitMpesaLabel">KES 0</strong></span>
+            <span>+</span>
+            <span class="cash-bal" id="splitCashSpan">💵 Cash: <strong id="splitCashLabel">KES 0</strong></span>
+            <span>= <strong id="splitTotalLabel">KES 0</strong></span>
+        </div>
+
+        <!-- Skip STK in edit mode -->
+        {% if edit_payment and edit_payment.method in ['M-Pesa', 'Split'] %}
+        <div class="no-stk-row">
+            <input type="checkbox" id="skipStk" checked>
+            <label for="skipStk" style="cursor:pointer; margin:0;">Payment already received — don't resend STK on save</label>
+        </div>
+        {% endif %}
+
     </div>
 
-    <!-- Items grid -->
+    <!-- Items -->
     <div class="section-label">Select Items</div>
 
     <form id="menuForm" method="POST"
           action="{% if edit_payment %}{{ url_for('update_order', payment_id=edit_payment.id) }}{% else %}{{ url_for('checkout') }}{% endif %}">
 
-        <!-- Hidden inputs written by JS on submit -->
         <div class="hidden-inputs" id="hiddenInputs"></div>
-
-        <!-- Visible method/phone fields inside form for submission -->
-        <input type="hidden" id="formMethod" name="method" value="Cash">
-        <input type="hidden" id="formPhone"  name="phone"  value="">
+        <input type="hidden" id="formMethod"     name="method"      value="Cash">
+        <input type="hidden" id="formPhone"      name="phone"       value="">
+        <input type="hidden" id="formAccountId"  name="account_id"  value="">
+        <input type="hidden" id="formCustomerId" name="customer_id" value="">
+        <input type="hidden" id="formSkipStk"    name="skip_stk"    value="0">
 
         <div class="items-grid">
             {% for item in menu_items %}
             {% set prefill_qty = qty_map[item.id] if (qty_map is defined and item.id in qty_map) else 0 %}
             <div class="item-card {% if prefill_qty > 0 %}selected{% endif %}"
-                 data-id="{{ item.id }}"
-                 data-price="{{ item.price }}"
-                 data-qty="{{ prefill_qty }}">
-
+                 data-id="{{ item.id }}" data-price="{{ item.price }}" data-qty="{{ prefill_qty }}">
                 <div class="check-badge">✓</div>
                 <img class="item-img" src="{{ item.image_url }}" alt="{{ item.name }}"
                      onerror="this.src='/static/images/default.jpg'">
-
                 <div class="item-body">
                     <div class="item-name">{{ item.name }}</div>
                     <div class="item-price">KES {{ item.price }}</div>
-
                     <div class="qty-row" onclick="event.stopPropagation()">
                         <button type="button" class="qty-btn minus-btn">−</button>
                         <div class="qty-display">{{ prefill_qty if prefill_qty > 0 else 1 }}</div>
@@ -315,10 +275,10 @@
     </form>
 </div>
 
-<!-- Floating total bar -->
+<!-- Floating bar -->
 <div class="floating-bar" id="floatingBar">
     <div class="bar-total">
-        <span class="bar-label">Total</span>
+        <span class="bar-label" id="barLabel">Total</span>
         <span class="bar-amount" id="barAmount">KES 0</span>
     </div>
     <span class="bar-items-count" id="barCount">0 items</span>
@@ -327,15 +287,89 @@
     </button>
 </div>
 
-<!-- Toast -->
-<div class="center-toast" id="centerToast">Please select at least one item first.</div>
-
+<div class="center-toast" id="centerToast"></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (function() {
-    // ── State ──
-    const state = {}; // { itemId: qty }
+    const state = {};
+    const HAS_ACCOUNTS = {{ 'true' if payment_accounts else 'false' }};
 
-    // ── Pre-fill from edit mode ──
+    // ── Helpers ──
+    function fmt(v){ return 'KES ' + v.toLocaleString('en-KE', {maximumFractionDigits:0}); }
+    function escH(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function showAlert(type, msg, id='mainAlert'){
+        const area = document.getElementById('alertArea');
+        const icons = {warning:'⚠️', danger:'❌', info:'ℹ️', success:'✅'};
+        area.innerHTML = `<div class="alert-banner ${type}" id="${id}"><span class="ab-icon">${icons[type]||'ℹ️'}</span><span>${msg}</span></div>`;
+        area.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+    function clearAlert(){ document.getElementById('alertArea').innerHTML = ''; }
+
+    function setFieldError(field, show){
+        const el = typeof field === 'string' ? document.getElementById(field) : field;
+        if(!el) return;
+        el.classList.toggle('has-error', show);
+    }
+
+    // ── Restrict inputs: phone → digits + +, amount → digits only ──
+    function restrictPhone(input){
+        input.addEventListener('input', function(){
+            let v = this.value.replace(/[^0-9+]/g, '');
+            // Only one + allowed, only at start
+            const hasPlus = v.includes('+');
+            if(hasPlus){
+                v = '+' + v.replace(/\+/g, '');
+            }
+            this.value = v;
+            validatePhone();
+        });
+        input.addEventListener('keydown', function(e){
+            const allowed = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter'];
+            if(allowed.includes(e.key)) return;
+            if(e.key === '+' && this.value.length === 0) return;
+            if(!/^\d$/.test(e.key)) e.preventDefault();
+        });
+    }
+
+    function restrictNumeric(input){
+        input.addEventListener('input', function(){
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+        input.addEventListener('keydown', function(e){
+            const allowed = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter'];
+            if(allowed.includes(e.key)) return;
+            if(!/^\d$/.test(e.key)) e.preventDefault();
+        });
+    }
+
+    // ── Phone validation ──
+    function validatePhone(){
+        const raw   = phoneInput.value.replace(/\s/g,'');
+        const field = document.getElementById('fieldPhone');
+        if(!raw){ setFieldError(field, false); return true; } // empty is ok (not yet required)
+        const norm  = normalisePhone(raw);
+        // Valid: starts with 254 and 12 digits, or starts with 07/01 and 10 digits
+        const valid = /^2547\d{8}$/.test(norm) || /^2541\d{8}$/.test(norm);
+        setFieldError(field, !valid);
+        if(!valid){
+            document.getElementById('phoneError').textContent =
+                raw.startsWith('+') || raw.startsWith('254')
+                    ? 'Number must be 254 + 9 digits (e.g. 254712345678)'
+                    : 'Enter a valid number: 0712345678 or 254712345678';
+        }
+        return valid;
+    }
+
+    function normalisePhone(p){
+        p = p.replace(/\D/g,'');
+        if(p.startsWith('0') && p.length === 10) return '254' + p.slice(1);
+        if(p.startsWith('7') && p.length === 9)  return '254' + p;
+        if(p.startsWith('1') && p.length === 9)  return '254' + p;
+        return p;
+    }
+
+    // ── Pre-fill quantities from edit mode ──
     document.querySelectorAll('.item-card').forEach(card => {
         const id  = card.dataset.id;
         const qty = parseInt(card.dataset.qty) || 0;
@@ -345,17 +379,75 @@
         }
     });
 
-    // ── Card tap (select/deselect) ──
-    document.querySelectorAll('.item-card').forEach(card => {
-        card.addEventListener('click', function() {
+    // ── Load customers ──
+    const customerSel = document.getElementById('customerSelect');
+    fetch('/api/customers').then(r=>r.json()).then(customers=>{
+        customers.forEach(c=>{
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.name + (c.phone ? ` (${c.phone})` : '');
+            opt.dataset.phone = c.phone || '';
+            customerSel.appendChild(opt);
+        });
+        {% if edit_payment and edit_payment.customer_id %}
+        customerSel.value = '{{ edit_payment.customer_id }}';
+        {% endif %}
+        syncCustomer();
+    });
+
+    customerSel.addEventListener('change', syncCustomer);
+
+    function syncCustomer(){
+        const opt   = customerSel.options[customerSel.selectedIndex];
+        const phone = opt ? (opt.dataset.phone || '') : '';
+        const qa    = document.getElementById('customerQuickAdd');
+        // Auto-fill phone if customer has one and phone field is visible
+        if(customerSel.value && phone && (methodSel.value === 'M-Pesa' || methodSel.value === 'Split')){
+            phoneInput.value = phone;
+            validatePhone();
+        }
+        // Show quick-add when phone is typed but no customer selected
+        updateQuickAdd();
+    }
+
+    function updateQuickAdd(){
+        const qa = document.getElementById('customerQuickAdd');
+        qa.style.display = (customerSel.value === '' && phoneInput.value.trim().length >= 9) ? 'flex' : 'none';
+    }
+
+    window.quickSaveCustomer = async function(){
+        if(!validatePhone()){ showAlert('danger', 'Fix the phone number error before saving customer.'); return; }
+        const name = prompt('Enter customer name to save as regular:');
+        if(!name) return;
+        const phone = normalisePhone(phoneInput.value);
+        const res = await fetch('/api/customers',{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({name, phone})
+        });
+        const data = await res.json();
+        if(res.ok){
+            const opt = document.createElement('option');
+            opt.value = data.id;
+            opt.textContent = data.name + (data.phone ? ` (${data.phone})` : '');
+            opt.dataset.phone = data.phone || '';
+            customerSel.appendChild(opt);
+            customerSel.value = data.id;
+            showAlert('success', `⭐ ${escH(data.name)} saved as a regular customer.`);
+            updateQuickAdd();
+        } else {
+            showAlert('danger', data.error || 'Could not save customer');
+        }
+    };
+
+    // ── Card tap ──
+    document.querySelectorAll('.item-card').forEach(card=>{
+        card.addEventListener('click', function(){
             const id = this.dataset.id;
-            if (this.classList.contains('selected')) {
-                // Deselect
+            if(this.classList.contains('selected')){
                 this.classList.remove('selected');
                 delete state[id];
                 this.querySelector('.qty-display').textContent = '1';
             } else {
-                // Select with qty 1
                 this.classList.add('selected');
                 state[id] = 1;
                 this.querySelector('.qty-display').textContent = '1';
@@ -364,143 +456,209 @@
         });
     });
 
-    // ── +/- buttons ──
-    document.querySelectorAll('.item-card').forEach(card => {
-        const id       = card.dataset.id;
-        const display  = card.querySelector('.qty-display');
-        const plusBtn  = card.querySelector('.plus-btn');
-        const minusBtn = card.querySelector('.minus-btn');
-
-        plusBtn.addEventListener('click', function(e) {
+    // ── +/- ──
+    document.querySelectorAll('.item-card').forEach(card=>{
+        const id = card.dataset.id;
+        const display = card.querySelector('.qty-display');
+        card.querySelector('.plus-btn').addEventListener('click', e=>{
             e.stopPropagation();
-            const cur = state[id] || 1;
-            state[id] = cur + 1;
+            state[id] = (state[id] || 1) + 1;
             display.textContent = state[id];
             updateTotal();
         });
-
-        minusBtn.addEventListener('click', function(e) {
+        card.querySelector('.minus-btn').addEventListener('click', e=>{
             e.stopPropagation();
             const cur = state[id] || 1;
-            if (cur <= 1) {
-                // Deselect
-                card.classList.remove('selected');
-                delete state[id];
-                display.textContent = '1';
-            } else {
-                state[id] = cur - 1;
-                display.textContent = state[id];
-            }
+            if(cur <= 1){ card.classList.remove('selected'); delete state[id]; display.textContent = '1'; }
+            else { state[id] = cur - 1; display.textContent = state[id]; }
             updateTotal();
         });
     });
 
-    // ── Total calculation ──
-    function updateTotal() {
-        let total = 0, itemCount = 0;
-        document.querySelectorAll('.item-card').forEach(card => {
-            const id = card.dataset.id;
-            if (state[id]) {
-                total     += parseFloat(card.dataset.price) * state[id];
-                itemCount += state[id];
-            }
-        });
-
-        document.getElementById('barAmount').textContent =
-            'KES ' + total.toLocaleString('en-KE', {maximumFractionDigits: 0});
-        document.getElementById('barCount').textContent =
-            itemCount + (itemCount === 1 ? ' item' : ' items');
-
-        const bar = document.getElementById('floatingBar');
-        if (itemCount > 0) {
-            bar.classList.add('visible');
-        } else {
-            bar.classList.remove('visible');
-        }
-    }
-
-    // ── Method / phone logic ──
+    // ── Method sync ──
     const methodSel  = document.getElementById('paymentMethod');
     const phoneInput = document.getElementById('phoneInput');
-    const phoneError = document.getElementById('phoneError');
+    const mpesaInput = document.getElementById('mpesaAmtInput');
 
-    function syncMethodPhone() {
-        const isMpesa = methodSel.value === 'M-Pesa';
-        phoneInput.readOnly  = !isMpesa;
-        phoneInput.required  = isMpesa;
-        phoneInput.style.background  = isMpesa ? '#fff' : '#f4f4f4';
-        phoneInput.style.color       = isMpesa ? '#222' : '#aaa';
-        phoneInput.style.cursor      = isMpesa ? 'text' : 'not-allowed';
-        if (!isMpesa) { phoneInput.value = ''; phoneError.style.display = 'none'; }
+    restrictPhone(phoneInput);
+    restrictNumeric(mpesaInput);
+
+    phoneInput.addEventListener('input', ()=>{ validatePhone(); updateQuickAdd(); });
+    mpesaInput.addEventListener('input', ()=>{ updateSplitDisplay(); updateTotal(); });
+
+    function syncMethod(){
+        const m = methodSel.value;
+        const needPh = m === 'M-Pesa' || m === 'Split';
+        document.getElementById('fieldPhone').style.display    = needPh   ? 'flex' : 'none';
+        document.getElementById('fieldAccount').style.display  = needPh   ? 'flex' : 'none';
+        document.getElementById('fieldMpesaAmt').style.display = m==='Split'?'flex':'none';
+        document.getElementById('splitInfo').classList.toggle('show', m==='Split');
+        setFieldError('fieldPhone', false);
+        setFieldError('fieldAccount', false);
+        setFieldError('fieldMpesaAmt', false);
+        if(!needPh){ phoneInput.value = ''; }
+
+        // Warn if no accounts configured
+        if(needPh && !HAS_ACCOUNTS){
+            showAlert('warning', '⚠️ No payment accounts configured. <a href="/settings">Go to Settings</a> to add a till or paybill before taking M-Pesa payments.');
+        } else {
+            clearAlert();
+        }
+        updateSplitDisplay();
     }
-    syncMethodPhone();
-    methodSel.addEventListener('change', syncMethodPhone);
+    syncMethod();
+    methodSel.addEventListener('change', ()=>{ syncMethod(); syncCustomer(); });
 
-    // ── Submit order ──
-    window.submitOrder = function() {
+    // ── Totals ──
+    function getOrderTotal(){
+        let t = 0;
+        document.querySelectorAll('.item-card').forEach(card=>{
+            if(state[card.dataset.id]) t += parseFloat(card.dataset.price) * state[card.dataset.id];
+        });
+        return t;
+    }
+
+    function updateSplitDisplay(){
+        if(methodSel.value !== 'Split') return;
+        const total = getOrderTotal(), mpesaAmt = parseFloat(mpesaInput.value) || 0;
+        const cashBal = Math.max(0, total - mpesaAmt);
+        document.getElementById('splitMpesaLabel').textContent = fmt(mpesaAmt);
+        document.getElementById('splitCashLabel').textContent  = fmt(cashBal);
+        document.getElementById('splitTotalLabel').textContent = fmt(total);
+        document.getElementById('splitCashSpan').className = 'cash-bal' + (cashBal === 0 ? ' zero' : '');
+    }
+
+    function updateTotal(){
+        const total = getOrderTotal();
+        let itemCount = 0;
+        Object.values(state).forEach(q => itemCount += q);
+        document.getElementById('barLabel').textContent  = methodSel.value === 'Split' ? 'Total (Split)' : 'Total';
+        document.getElementById('barAmount').textContent = fmt(total);
+        document.getElementById('barCount').textContent  = itemCount + (itemCount===1?' item':' items');
+        document.getElementById('floatingBar').classList.toggle('visible', itemCount > 0);
+        updateSplitDisplay();
+    }
+
+    // ── Submit ──
+    window.submitOrder = function(){
         const method   = methodSel.value;
         const phone    = phoneInput.value.trim();
-        const selected = Object.keys(state);
+        const acctId   = document.getElementById('accountSelect')?.value || '';
+        const selected = Object.keys(state).filter(id => state[id] > 0);
+        const total    = getOrderTotal();
+        let   valid    = true;
 
-        if (selected.length === 0) {
+        // No items
+        if(!selected.length){
             showToast('Please select at least one item first.');
             return;
         }
-        if (method === 'M-Pesa' && !phone) {
-            phoneError.style.display = 'block';
-            phoneInput.focus();
-            return;
+
+        // Phone validation
+        if(method === 'M-Pesa' || method === 'Split'){
+            if(!phone){
+                setFieldError('fieldPhone', true);
+                document.getElementById('phoneError').textContent = 'Phone number is required for M-Pesa payments';
+                document.getElementById('fieldPhone').scrollIntoView({behavior:'smooth', block:'center'});
+                valid = false;
+            } else if(!validatePhone()){
+                document.getElementById('fieldPhone').scrollIntoView({behavior:'smooth', block:'center'});
+                valid = false;
+            }
         }
 
+        // Account validation
+        if((method === 'M-Pesa' || method === 'Split') && !acctId){
+            setFieldError('fieldAccount', true);
+            document.getElementById('accountError').textContent = !HAS_ACCOUNTS
+                ? 'No accounts configured — add one in Settings first'
+                : 'Please select a payment account';
+            if(valid) document.getElementById('fieldAccount').scrollIntoView({behavior:'smooth', block:'center'});
+            valid = false;
+        }
+
+        // Split amount validation
+        if(method === 'Split'){
+            const mpesaAmt = parseFloat(mpesaInput.value) || 0;
+            if(mpesaAmt <= 0){
+                setFieldError('fieldMpesaAmt', true);
+                document.getElementById('mpesaAmtError').textContent = 'Enter the M-Pesa portion amount';
+                if(valid) document.getElementById('fieldMpesaAmt').scrollIntoView({behavior:'smooth', block:'center'});
+                valid = false;
+            } else if(mpesaAmt >= total){
+                // Exceeded — offer to use plain M-Pesa instead
+                setFieldError('fieldMpesaAmt', true);
+                document.getElementById('mpesaAmtError').textContent = 'M-Pesa amount equals or exceeds total — use M-Pesa method instead';
+                if(valid) document.getElementById('fieldMpesaAmt').scrollIntoView({behavior:'smooth', block:'center'});
+                valid = false;
+            }
+        }
+
+        if(!valid) return;
+
+        // ── Show full page loader ──
+        const loader = document.getElementById('pageLoader');
+        document.getElementById('loaderText').textContent = '{% if edit_payment %}Updating order…{% else %}Placing order…{% endif %}';
+        loader.classList.add('show');
+
         const btn = document.getElementById('checkoutBtn');
-        btn.disabled    = true;
-        btn.textContent = 'Processing…';
+        btn.disabled = true;
 
-        // Format phone
-        let fmtPhone = phone.replace(/\D/g, '');
-        if (fmtPhone.startsWith('0')   && fmtPhone.length === 10) fmtPhone = '254' + fmtPhone.slice(1);
-        else if (fmtPhone.startsWith('7') && fmtPhone.length === 9)  fmtPhone = '254' + fmtPhone;
-        else if (fmtPhone.startsWith('1') && fmtPhone.length === 9)  fmtPhone = '254' + fmtPhone;
-
-        // Write hidden inputs
-        const form    = document.getElementById('menuForm');
-        const hidden  = document.getElementById('hiddenInputs');
+        const fmtPhone = normalisePhone(phone);
+        const hidden   = document.getElementById('hiddenInputs');
         hidden.innerHTML = '';
 
-        // Method + phone
-        document.getElementById('formMethod').value = method;
-        document.getElementById('formPhone').value  = method === 'M-Pesa' ? fmtPhone : '';
+        document.getElementById('formMethod').value     = method;
+        document.getElementById('formPhone').value      = (method==='M-Pesa'||method==='Split') ? fmtPhone : '';
+        document.getElementById('formAccountId').value  = acctId;
+        document.getElementById('formCustomerId').value = customerSel.value || '';
 
-        // Items + quantities
-        selected.forEach(id => {
-            const qty = state[id];
-            if (qty > 0) {
-                const cbInput = document.createElement('input');
-                cbInput.type  = 'hidden';
-                cbInput.name  = 'items';
-                cbInput.value = id;
-                hidden.appendChild(cbInput);
+        const skipStkEl = document.getElementById('skipStk');
+        document.getElementById('formSkipStk').value = (skipStkEl && skipStkEl.checked) ? '1' : '0';
 
-                const qtyInput = document.createElement('input');
-                qtyInput.type  = 'hidden';
-                qtyInput.name  = `qty_${id}`;
-                qtyInput.value = qty;
-                hidden.appendChild(qtyInput);
-            }
+        if(method === 'Split'){
+            const ma = document.createElement('input');
+            ma.type='hidden'; ma.name='mpesa_amount'; ma.value=parseFloat(mpesaInput.value);
+            hidden.appendChild(ma);
+        }
+
+        selected.forEach(id=>{
+            const cb=document.createElement('input'); cb.type='hidden'; cb.name='items'; cb.value=id; hidden.appendChild(cb);
+            const qi=document.createElement('input'); qi.type='hidden'; qi.name=`qty_${id}`; qi.value=state[id]; hidden.appendChild(qi);
         });
 
-        form.submit();
+        document.getElementById('menuForm').submit();
+    };
+
+    // ── New Order (clear everything) ──
+    window.clearOrder = function(){
+        if(Object.keys(state).length > 0){
+            if(!confirm('Clear current order and start fresh?')) return;
+        }
+        // Deselect all cards
+        document.querySelectorAll('.item-card').forEach(card=>{
+            card.classList.remove('selected');
+            card.querySelector('.qty-display').textContent = '1';
+            delete state[card.dataset.id];
+        });
+        // Reset config
+        methodSel.value = 'Cash';
+        customerSel.value = '';
+        phoneInput.value = '';
+        mpesaInput.value = '';
+        syncMethod();
+        updateTotal();
+        clearAlert();
+        showToast('New order started');
     };
 
     // ── Toast ──
-    window.showToast = function(msg) {
+    window.showToast = function(msg){
         const t = document.getElementById('centerToast');
-        t.textContent = msg;
-        t.classList.add('show');
-        setTimeout(() => t.classList.remove('show'), 2800);
+        t.textContent = msg; t.classList.add('show');
+        setTimeout(()=>t.classList.remove('show'), 2800);
     };
 
-    // Run on load
     updateTotal();
 })();
 </script>

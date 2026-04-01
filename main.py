@@ -6,6 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import joinedload
+from sqlalchemy import func
 from dotenv import load_dotenv
 from flask_socketio import SocketIO
 import requests
@@ -35,6 +36,12 @@ DB_PORT     = os.getenv("DB_PORT")
 DB_NAME     = os.getenv("DB_NAME")
 
 # ── M-Pesa credentials (BOTH sets live in .env, mode selected from DB) ──
+# Add these to your .env:
+#   MPESA_SANDBOX_CONSUMER_KEY, MPESA_SANDBOX_CONSUMER_SECRET
+#   MPESA_SANDBOX_SHORTCODE,    MPESA_SANDBOX_PASSKEY
+#   MPESA_LIVE_CONSUMER_KEY,    MPESA_LIVE_CONSUMER_SECRET
+#   MPESA_LIVE_SHORTCODE,       MPESA_LIVE_PASSKEY
+#   MPESA_CALLBACK_URL
 MPESA_CREDS = {
     'sandbox': {
         'key':       os.getenv("MPESA_SANDBOX_CONSUMER_KEY"),
@@ -86,13 +93,19 @@ class Payment(db.Model):
     id                  = db.Column(db.Integer, primary_key=True)
     phone               = db.Column(db.String(20))
     amount              = db.Column(db.Float)
-    method              = db.Column(db.String(20))
+    mpesa_amount        = db.Column(db.Float, nullable=True)
+    cash_amount         = db.Column(db.Float, nullable=True)
+    method              = db.Column(db.String(20))   # Cash / M-Pesa / Split
     pay_channel         = db.Column(db.String(20))
+    payment_account_id  = db.Column(db.Integer, db.ForeignKey('payment_accounts.id'), nullable=True)
+    customer_id         = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=True)
     checkout_request_id = db.Column(db.String(100))
     mpesa_receipt       = db.Column(db.String(50))
     status              = db.Column(db.String(20))
     notes               = db.Column(db.String(300), nullable=True)
     created_at          = db.Column(db.DateTime, default=db.func.now())
+    payment_account     = db.relationship("PaymentAccount", foreign_keys=[payment_account_id])
+    customer            = db.relationship("Customer", foreign_keys=[customer_id])
 
 
 class OrderItem(db.Model):
@@ -120,17 +133,41 @@ class AppSetting(db.Model):
     value = db.Column(db.Text, nullable=True)
 
 
+class PaymentAccount(db.Model):
+    """Till numbers and paybill accounts, managed from Settings."""
+    __tablename__ = 'payment_accounts'
+    id              = db.Column(db.Integer, primary_key=True)
+    name            = db.Column(db.String(100), nullable=False)  # "Main Till", "Paybill 1"
+    account_type    = db.Column(db.String(20),  nullable=False)  # Till / Paybill
+    shortcode       = db.Column(db.String(20),  nullable=False)
+    consumer_key    = db.Column(db.String(200), nullable=True)
+    consumer_secret = db.Column(db.String(200), nullable=True)
+    passkey         = db.Column(db.String(200), nullable=True)
+    is_default      = db.Column(db.Boolean, default=False)
+    active          = db.Column(db.Boolean, default=True)
+
+
+class Customer(db.Model):
+    """Saved regular customers."""
+    __tablename__ = 'customers'
+    id         = db.Column(db.Integer, primary_key=True)
+    name       = db.Column(db.String(100), nullable=False)
+    phone      = db.Column(db.String(20),  nullable=True)
+    notes      = db.Column(db.String(300), nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+
+
 # ─────────────────────────────────────────
 # Settings helpers
 # ─────────────────────────────────────────
 
 def get_setting(key, default=None):
-    row = AppSetting.query.get(key)
+    row = db.session.get(AppSetting, key)
     return row.value if row else default
 
 
 def set_setting(key, value):
-    row = AppSetting.query.get(key)
+    row = db.session.get(AppSetting, key)
     if row:
         row.value = str(value)
     else:
@@ -142,8 +179,43 @@ def get_mpesa_mode():
     return get_setting('mpesa_mode', 'sandbox')
 
 
-def get_mpesa_cfg():
-    return MPESA_CREDS.get(get_mpesa_mode(), MPESA_CREDS['sandbox'])
+def get_mpesa_cfg(account_id=None):
+    """
+    Return M-Pesa credentials for the given account_id (or default account).
+    Falls back to .env-based MPESA_CREDS if no DB accounts configured.
+    """
+    mode = get_mpesa_mode()
+    base_url = ('https://api.safaricom.co.ke' if mode == 'live'
+                else 'https://sandbox.safaricom.co.ke')
+
+    # Try DB accounts first
+    if account_id:
+        acct = db.session.get(PaymentAccount, account_id)
+    else:
+        acct = PaymentAccount.query.filter_by(is_default=True, active=True).first()
+        if not acct:
+            acct = PaymentAccount.query.filter_by(active=True).first()
+
+    if acct and acct.consumer_key and acct.passkey:
+        return {
+            'key':       acct.consumer_key,
+            'secret':    acct.consumer_secret,
+            'shortcode': acct.shortcode,
+            'passkey':   acct.passkey,
+            'base_url':  base_url,
+            'account_type': acct.account_type,
+            'account_name': acct.name,
+        }
+
+    # Fallback to .env credentials
+    return {**MPESA_CREDS.get(mode, MPESA_CREDS['sandbox']), 'account_type': 'Till', 'account_name': 'Default'}
+
+
+def get_active_payment_accounts():
+    """Return all active payment accounts for display in menu dropdown."""
+    accounts = PaymentAccount.query.filter_by(active=True).order_by(
+        PaymentAccount.is_default.desc(), PaymentAccount.name).all()
+    return accounts
 
 
 # ─────────────────────────────────────────
@@ -153,10 +225,12 @@ def get_mpesa_cfg():
 @app.context_processor
 def inject_globals():
     try:
-        mode = get_mpesa_mode()
+        mode     = get_mpesa_mode()
+        accounts = get_active_payment_accounts()
     except Exception:
-        mode = 'sandbox'
-    return dict(mpesa_mode=mode)
+        mode     = 'sandbox'
+        accounts = []
+    return dict(mpesa_mode=mode, payment_accounts=accounts)
 
 
 # ─────────────────────────────────────────
@@ -179,15 +253,19 @@ def notify_payment_update(payment):
     items = [{"name": i.menu_item.name, "qty": i.quantity, "price": i.price}
              for i in payment.order_items]
     socketio.emit('payment_update', {
-        "id":            payment.id,
-        "phone":         payment.phone or "—",
-        "amount":        payment.amount,
-        "method":        payment.method,
-        "pay_channel":   payment.pay_channel or "",
-        "status":        payment.status,
-        "notes":         payment.notes or "",
-        "mpesa_receipt": payment.mpesa_receipt or "",
-        "items":         items
+        "id":              payment.id,
+        "phone":           payment.phone or "—",
+        "amount":          payment.amount,
+        "mpesa_amount":    payment.mpesa_amount,
+        "cash_amount":     payment.cash_amount,
+        "method":          payment.method,
+        "pay_channel":     payment.pay_channel or "",
+        "status":          payment.status,
+        "notes":           payment.notes or "",
+        "mpesa_receipt":   payment.mpesa_receipt or "",
+        "customer_name":   payment.customer.name if payment.customer else "",
+        "account_name":    payment.payment_account.name if payment.payment_account else "",
+        "items":           items
     }, to=None)
 
 
@@ -203,8 +281,8 @@ def to_eat(dt):
 # M-Pesa
 # ─────────────────────────────────────────
 
-def get_mpesa_token():
-    cfg = get_mpesa_cfg()
+def get_mpesa_token(account_id=None):
+    cfg = get_mpesa_cfg(account_id)
     r   = requests.get(
         f"{cfg['base_url']}/oauth/v1/generate?grant_type=client_credentials",
         auth=HTTPBasicAuth(cfg['key'], cfg['secret'])
@@ -213,18 +291,22 @@ def get_mpesa_token():
     return r.json().get("access_token")
 
 
-def initiate_stk_push(phone, amount):
-    cfg       = get_mpesa_cfg()
-    token     = get_mpesa_token()
-    ts        = datetime.now().strftime('%Y%m%d%H%M%S')
-    password  = base64.b64encode(
+def initiate_stk_push(phone, amount, account_id=None, order_id=None):
+    cfg      = get_mpesa_cfg(account_id)
+    token    = get_mpesa_token(account_id)
+    ts       = datetime.now().strftime('%Y%m%d%H%M%S')
+    password = base64.b64encode(
         f"{cfg['shortcode']}{cfg['passkey']}{ts}".encode()).decode()
-    payload   = {
+
+    # Use order ID as bill reference for paybill (enables C2B matching by any phone)
+    acct_ref = f"Order{order_id}" if order_id else "FedhaFlow"
+
+    payload = {
         "BusinessShortCode": cfg['shortcode'], "Password": password,
         "Timestamp": ts, "TransactionType": "CustomerPayBillOnline",
         "Amount": int(amount), "PartyA": phone, "PartyB": cfg['shortcode'],
         "PhoneNumber": phone, "CallBackURL": MPESA_CALLBACK_URL,
-        "AccountReference": "FedhaFlow", "TransactionDesc": "Cafeteria Order"
+        "AccountReference": acct_ref, "TransactionDesc": "Cafeteria Order"
     }
     r    = requests.post(f"{cfg['base_url']}/mpesa/stkpush/v1/processrequest",
                          json=payload, headers={"Authorization": f"Bearer {token}"})
@@ -385,7 +467,10 @@ def insights():
 def settings_page():
     cfg        = {s.key: s.value for s in AppSetting.query.all()}
     menu_items = MenuItem.query.order_by(MenuItem.name).all()
-    return render_template("settings.html", cfg=cfg, menu_items=menu_items)
+    accounts   = PaymentAccount.query.order_by(PaymentAccount.is_default.desc(), PaymentAccount.name).all()
+    customers  = Customer.query.order_by(Customer.name).all()
+    return render_template("settings.html", cfg=cfg, menu_items=menu_items,
+                           accounts=accounts, customers=customers)
 
 
 # ─────────────────────────────────────────
@@ -407,6 +492,122 @@ def api_set_mpesa_mode():
         return jsonify({"error": "Invalid mode"}), 400
     set_setting('mpesa_mode', mode)
     return jsonify({"ok": True, "mode": mode})
+
+
+# ─────────────────────────────────────────
+# Routes — Payment accounts CRUD
+# ─────────────────────────────────────────
+
+@app.route('/api/payment-accounts', methods=['GET'])
+def api_get_accounts():
+    accounts = PaymentAccount.query.filter_by(active=True).order_by(
+        PaymentAccount.is_default.desc(), PaymentAccount.name).all()
+    return jsonify([{
+        "id": a.id, "name": a.name, "account_type": a.account_type,
+        "shortcode": a.shortcode, "is_default": a.is_default, "active": a.active
+    } for a in accounts])
+
+
+@app.route('/api/payment-accounts', methods=['POST'])
+def api_add_account():
+    body = request.get_json()
+    name = (body.get('name') or '').strip()
+    sc   = (body.get('shortcode') or '').strip()
+    if not name or not sc:
+        return jsonify({"error": "Name and shortcode required"}), 400
+    acct = PaymentAccount(
+        name=name, account_type=body.get('account_type', 'Till'),
+        shortcode=sc,
+        consumer_key=body.get('consumer_key', '').strip(),
+        consumer_secret=body.get('consumer_secret', '').strip(),
+        passkey=body.get('passkey', '').strip(),
+        is_default=bool(body.get('is_default', False)),
+        active=True
+    )
+    # If set as default, clear other defaults
+    if acct.is_default:
+        PaymentAccount.query.update({"is_default": False})
+    db.session.add(acct)
+    db.session.commit()
+    return jsonify({"id": acct.id, "name": acct.name, "shortcode": acct.shortcode,
+                    "account_type": acct.account_type, "is_default": acct.is_default}), 201
+
+
+@app.route('/api/payment-accounts/<int:acct_id>', methods=['PUT'])
+def api_update_account(acct_id):
+    acct = db.session.get(PaymentAccount, acct_id)
+    if not acct: return jsonify({"error": "Not found"}), 404
+    body = request.get_json()
+    for field in ('name', 'account_type', 'shortcode', 'consumer_key', 'consumer_secret', 'passkey'):
+        if field in body: setattr(acct, field, body[field].strip() if body[field] else '')
+    if 'is_default' in body and body['is_default']:
+        PaymentAccount.query.update({"is_default": False})
+        acct.is_default = True
+    if 'active' in body: acct.active = bool(body['active'])
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route('/api/payment-accounts/<int:acct_id>', methods=['DELETE'])
+def api_delete_account(acct_id):
+    acct = db.session.get(PaymentAccount, acct_id)
+    if not acct: return jsonify({"error": "Not found"}), 404
+    acct.active = False
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ─────────────────────────────────────────
+# Routes — Customers CRUD
+# ─────────────────────────────────────────
+
+@app.route('/api/customers', methods=['GET'])
+def api_get_customers():
+    customers = Customer.query.order_by(Customer.name).all()
+    return jsonify([{"id": c.id, "name": c.name, "phone": c.phone or "",
+                     "notes": c.notes or ""} for c in customers])
+
+
+@app.route('/api/customers', methods=['POST'])
+def api_add_customer():
+    body  = request.get_json()
+    name  = (body.get('name') or '').strip()
+    phone = (body.get('phone') or '').strip()
+    if not name: return jsonify({"error": "Name required"}), 400
+    if not phone: return jsonify({"error": "Phone required"}), 400
+    # Normalize phone
+    p = phone.replace(' ', '')
+    if p.startswith('0') and len(p) == 10: p = '254' + p[1:]
+    existing = Customer.query.filter(Customer.name == name, Customer.phone == p).first()
+    existing = Customer.query.filter(
+        func.lower(Customer.name) == name.lower(),
+        func.lower(Customer.phone) == p.lower()
+    ).first()
+    if existing:
+        return jsonify({"error": f"Customer '{name}' already exists"}), 409
+    c = Customer(name=name, phone=p, notes=(body.get('notes') or '').strip())
+    db.session.add(c); db.session.commit()
+    return jsonify({"id": c.id, "name": c.name, "phone": c.phone or "", "notes": c.notes or ""}), 201
+
+
+@app.route('/api/customers/<int:cust_id>', methods=['PUT'])
+def api_update_customer(cust_id):
+    c = db.session.get(Customer, cust_id)
+    if not c: return jsonify({"error": "Not found"}), 404
+    body = request.get_json()
+    if 'name'  in body: c.name  = body['name'].strip()
+    if 'phone' in body: c.phone = body['phone'].strip()
+    if 'notes' in body: c.notes = body['notes'].strip()
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route('/api/customers/<int:cust_id>', methods=['DELETE'])
+def api_delete_customer(cust_id):
+    c = db.session.get(Customer, cust_id)
+    if not c: return jsonify({"error": "Not found"}), 404
+    db.session.delete(c); db.session.commit()
+    return jsonify({"ok": True})
 
 
 # ─────────────────────────────────────────
@@ -481,13 +682,15 @@ def api_send_summary():
 @app.route('/checkout', methods=['POST'])
 def checkout():
     selected_item_ids = request.form.getlist('items')
+    customer_id = request.form.get("customer_id")
+    account_id  = request.form.get("account_id")
     method = request.form.get("method")
-    phone  = request.form.get("phone") if method == "M-Pesa" else None
-    status = "Pending" if method == "M-Pesa" else "Confirmed"
+    phone  = request.form.get("phone") if method in ("M-Pesa", "Split") else None
+    status = "Pending" if method in ("M-Pesa", "Split") else "Confirmed"
 
     if not selected_item_ids:
         flash("No items selected!", "warning"); return redirect(url_for('menu'))
-    if method == "M-Pesa" and not phone:
+    if method in ("M-Pesa", "Split") and not phone:
         flash("Phone number required for M-Pesa.", "warning"); return redirect(url_for('menu'))
 
     total = sum(
@@ -498,8 +701,26 @@ def checkout():
     if total == 0:
         flash("Select at least one item with quantity > 0!", "warning"); return redirect(url_for('menu'))
 
-    payment = Payment(phone=phone, amount=total, method=method,
-                      pay_channel="Till" if method == "M-Pesa" else None, status=status)
+    # Split amounts
+    mpesa_amount = None
+    cash_amount  = None
+    if method == "Split":
+        mpesa_amount = float(request.form.get("mpesa_amount", 0))
+        cash_amount  = round(total - mpesa_amount, 2)
+        if mpesa_amount <= 0 or mpesa_amount >= total:
+            flash("Invalid M-Pesa split amount.", "warning"); return redirect(url_for('menu'))
+
+    payment = Payment(
+        phone        = phone,
+        amount       = total,
+        mpesa_amount = mpesa_amount,
+        cash_amount  = cash_amount,
+        method       = method,
+        pay_channel  = "Till" if method in ("M-Pesa", "Split") else None,
+        status       = status,
+        customer_id  = int(customer_id) if customer_id else None,
+        payment_account_id = int(account_id) if account_id else None
+    )
     db.session.add(payment)
     db.session.flush()
 
@@ -512,12 +733,16 @@ def checkout():
     db.session.commit()
     notify_payment_update(payment)
 
-    if method == "M-Pesa":
-        stk = initiate_stk_push(phone, total)
+    if method in ("M-Pesa", "Split"):
+        stk_amt = mpesa_amount if method == "Split" else total
+        stk = initiate_stk_push(phone, stk_amt)
         if stk.get("success"):
             payment.checkout_request_id = stk["CheckoutRequestID"]
             db.session.commit()
-            flash(f"STK Push sent to {phone}.", "info")
+            if method == "Split":
+                flash(f"STK Push sent for KES {stk_amt} to {phone}. Collect KES {cash_amount} cash.", "info")
+            else:
+                flash(f"STK Push sent to {phone}.", "info")
         else:
             flash(f"STK Push failed: {stk.get('error')}", "danger")
 
@@ -544,12 +769,12 @@ def update_order(payment_id):
 
     selected_item_ids = request.form.getlist('items')
     method = request.form.get("method")
-    phone  = request.form.get("phone") if method == "M-Pesa" else None
+    phone  = request.form.get("phone") if method in ("M-Pesa", "Split") else None
 
     if not selected_item_ids:
         flash("No items selected!", "warning"); return redirect(url_for('edit_order', payment_id=payment_id))
-    if method == "M-Pesa" and not phone:
-        flash("Phone required for M-Pesa.", "warning"); return redirect(url_for('edit_order', payment_id=payment_id))
+    if method in ("M-Pesa", "Split") and not phone:
+        flash("Phone required.", "warning"); return redirect(url_for('edit_order', payment_id=payment_id))
 
     total = sum(
         (db.session.get(MenuItem, int(iid)).price * int(request.form.get(f'qty_{iid}', 0)))
@@ -560,6 +785,15 @@ def update_order(payment_id):
         flash("Select at least one item with quantity > 0!", "warning")
         return redirect(url_for('edit_order', payment_id=payment_id))
 
+    mpesa_amount = None
+    cash_amount  = None
+    if method == "Split":
+        mpesa_amount = float(request.form.get("mpesa_amount", 0))
+        cash_amount  = round(total - mpesa_amount, 2)
+        if mpesa_amount <= 0 or mpesa_amount >= total:
+            flash("Invalid M-Pesa split amount.", "warning")
+            return redirect(url_for('edit_order', payment_id=payment_id))
+
     OrderItem.query.filter_by(payment_id=payment.id).delete()
     for iid in selected_item_ids:
         item = db.session.get(MenuItem, int(iid))
@@ -568,20 +802,26 @@ def update_order(payment_id):
             db.session.add(OrderItem(payment_id=payment.id, menu_item_id=item.id,
                                      quantity=qty, price=item.price))
 
-    payment.phone   = phone
-    payment.amount  = total
-    payment.method  = method
-    payment.pay_channel = "Till" if method == "M-Pesa" else None
-    payment.status  = "Pending" if method == "M-Pesa" else "Confirmed"
+    payment.phone        = phone
+    payment.amount       = total
+    payment.mpesa_amount = mpesa_amount
+    payment.cash_amount  = cash_amount
+    payment.method       = method
+    payment.pay_channel  = "Till" if method in ("M-Pesa", "Split") else None
+    payment.status       = "Pending" if method in ("M-Pesa", "Split") else "Confirmed"
     db.session.commit()
     notify_payment_update(payment)
 
-    if method == "M-Pesa":
-        stk = initiate_stk_push(phone, total)
+    if method in ("M-Pesa", "Split"):
+        stk_amt = mpesa_amount if method == "Split" else total
+        stk = initiate_stk_push(phone, stk_amt)
         if stk.get("success"):
             payment.checkout_request_id = stk["CheckoutRequestID"]
             db.session.commit()
-            flash(f"Order updated. STK Push sent to {phone}.", "info")
+            if method == "Split":
+                flash(f"Order updated. STK Push for KES {stk_amt} sent. Collect KES {cash_amount} cash.", "info")
+            else:
+                flash(f"Order updated. STK Push sent to {phone}.", "info")
         else:
             flash(f"Order updated but STK failed: {stk.get('error')}", "danger")
     else:
@@ -620,14 +860,42 @@ def delete_order(payment_id):
 @app.route('/resend-stk/<int:payment_id>')
 def resend_stk(payment_id):
     payment = db.session.get(Payment, payment_id)
-    if payment and payment.status == "Pending" and payment.method == "M-Pesa":
-        stk = initiate_stk_push(payment.phone, payment.amount)
+    if payment and payment.status == "Pending" and payment.method in ("M-Pesa", "Split"):
+        # For Split, fire STK for mpesa_amount only; for M-Pesa, fire for full amount
+        stk_amt = payment.mpesa_amount if payment.method == "Split" else payment.amount
+        stk = initiate_stk_push(
+            payment.phone, stk_amt,
+            account_id=payment.payment_account_id,
+            order_id=payment.id
+        )
         if stk.get("success"):
             payment.checkout_request_id = stk["CheckoutRequestID"]
             db.session.commit()
-            flash("STK Push resent.", "info")
+            flash(f"STK Push resent for KES {format_currency(stk_amt)}.", "info")
         else:
             flash(f"STK failed: {stk.get('error')}", "danger")
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/unconfirm/<int:payment_id>', methods=['POST'])
+def unconfirm_payment(payment_id):
+    """Revert a confirmed payment back to Pending with a required reason."""
+    # Check if editing confirmed orders is locked
+    if get_setting('lock_confirmed_orders', 'false') == 'true':
+        flash("Confirmed orders are locked. Disable this in Settings first.", "warning")
+        return redirect(url_for('dashboard'))
+    payment = db.session.get(Payment, payment_id)
+    if not payment:
+        flash("Order not found.", "danger"); return redirect(url_for('dashboard'))
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        flash("A reason is required to unconfirm a payment.", "warning")
+        return redirect(url_for('dashboard'))
+    payment.status = "Pending"
+    payment.notes  = f"Unconfirmed: {reason}"
+    db.session.commit()
+    notify_payment_update(payment)
+    flash(f"Payment #{payment_id} reverted to Pending.", "info")
     return redirect(url_for('dashboard'))
 
 
@@ -663,32 +931,74 @@ def c2b_validation():
 @app.route("/c2b/confirmation", methods=["POST"])
 def c2b_confirmation():
     data = request.get_json()
+    print("C2B Confirmation:", data)
     try:
-        amount  = float(data.get("TransAmount", 0))
-        phone   = str(data.get("MSISDN", ""))
-        receipt = data.get("TransID", "")
+        amount    = float(data.get("TransAmount", 0))
+        phone     = str(data.get("MSISDN", ""))
+        receipt   = data.get("TransID", "")
+        bill_ref  = str(data.get("BillRefNumber", "")).strip()  # e.g. "Order42"
+
         if phone.startswith("0") and len(phone) == 10:
             phone = "254" + phone[1:]
-        payment = Payment.query.filter_by(
-            phone=phone, amount=amount, method="M-Pesa", status="Pending").first()
-        if payment:
-            payment.status = "Confirmed"; payment.pay_channel = "Phone"
-            payment.mpesa_receipt = receipt; payment.notes = "Paid through phone"
-        else:
-            # CREATE NEW PAYMENT for pay before order
-            payment = Payment(
-                phone=phone,
-                amount=amount,
-                method="M-Pesa",
-                pay_channel="Phone",
-                status="Confirmed",
-                mpesa_receipt=receipt,
-                notes="C2B direct payment"
-            )
-            db.session.add(payment)
-        db.session.commit(); db.session.refresh(payment)
-        notify_payment_update(payment)
-        
+
+        confirmed_any = False
+
+        # ── Strategy 1: match by bill reference (paybill — any phone) ──
+        if bill_ref.lower().startswith("order"):
+            try:
+                order_id = int(bill_ref.lower().replace("order", "").strip())
+                payment  = Payment.query.filter_by(id=order_id, status="Pending").first()
+                if payment:
+                    payment.status        = "Confirmed"
+                    payment.pay_channel   = "Phone"
+                    payment.mpesa_receipt = receipt
+                    payment.notes         = f"Paid via phone {phone}"
+                    db.session.commit(); db.session.refresh(payment)
+                    notify_payment_update(payment)
+                    confirmed_any = True
+                    print(f"C2B matched by bill ref: Order {order_id}")
+            except (ValueError, AttributeError):
+                pass
+
+        # ── Strategy 2: match by phone + amount (till or paybill fallback) ──
+        if not confirmed_any:
+            # Full M-Pesa orders
+            matched = Payment.query.filter_by(
+                phone=phone, amount=amount, method="M-Pesa", status="Pending").all()
+            # Split orders — match by mpesa_amount
+            split_matched = Payment.query.filter_by(
+                phone=phone, method="Split", status="Pending"
+            ).filter(Payment.mpesa_amount == amount).all()
+
+            for payment in matched + split_matched:
+                payment.status        = "Confirmed"
+                payment.pay_channel   = "Phone"
+                payment.mpesa_receipt = receipt
+                payment.notes         = "Paid through phone"
+                db.session.commit(); db.session.refresh(payment)
+                notify_payment_update(payment)
+                confirmed_any = True
+
+        # ── Strategy 3 (till only): match by amount alone if still unmatched ──
+        # Only for till accounts — paybill customers MUST enter a reference
+        if not confirmed_any:
+            # Find pending orders with this exact amount (any phone)
+            candidates = Payment.query.filter_by(
+                amount=amount, status="Pending", method="M-Pesa").all()
+            # Also check Split mpesa_amount
+            split_candidates = Payment.query.filter_by(
+                status="Pending", method="Split"
+            ).filter(Payment.mpesa_amount == amount).all()
+            for payment in candidates + split_candidates:
+                payment.status        = "Confirmed"
+                payment.pay_channel   = "Phone"
+                payment.mpesa_receipt = receipt
+                payment.notes         = f"Auto-matched by amount — paid via {phone}"
+                db.session.commit(); db.session.refresh(payment)
+                notify_payment_update(payment)
+                print(f"C2B amount-only match: Order {payment.id}")
+                break  # only match one to avoid false positives
+
     except Exception as e:
         print("C2B error:", e)
     return jsonify({"ResultCode": 0, "ResultDesc": "Accepted"})
@@ -709,7 +1019,10 @@ def api_payments():
         if p.status == "Confirmed": total_sales += p.amount
         data.append({
             "id": p.id, "phone": p.phone or "—",
-            "amount": format_currency(p.amount), "method": p.method,
+            "amount": format_currency(p.amount),
+            "mpesa_amount": format_currency(p.mpesa_amount) if p.mpesa_amount else None,
+            "cash_amount":  format_currency(p.cash_amount)  if p.cash_amount  else None,
+            "method": p.method,
             "pay_channel": p.pay_channel or "", "status": p.status,
             "notes": p.notes or "", "mpesa_receipt": p.mpesa_receipt or "",
             "items": [{"name": oi.menu_item.name, "qty": format_currency(oi.quantity),
@@ -1020,7 +1333,7 @@ def seed_settings():
         'callmebot_api_keys':       '{}',
     }
     for k, v in defaults.items():
-        if not AppSetting.query.get(k):
+        if not db.session.get(AppSetting, k):
             db.session.add(AppSetting(key=k, value=v))
     db.session.commit()
 
