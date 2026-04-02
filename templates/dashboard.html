@@ -78,8 +78,15 @@
     </style>
 </head>
 <body>
-
 {% include '_mode_banner.html' %}
+
+<!-- Page loader -->
+<div id="pageLoader" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,30,50,.72); backdrop-filter:blur(3px); flex-direction:column; align-items:center; justify-content:center; gap:14px;">
+    <div style="width:48px; height:48px; border:4px solid rgba(255,255,255,.2); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite;"></div>
+    <div id="loaderText" style="color:#fff; font-size:.95rem; font-weight:600;">Processing…</div>
+    <div style="color:rgba(255,255,255,.65); font-size:.8rem;">Please wait</div>
+</div>
+<style>@keyframes spin { to { transform:rotate(360deg); } }</style>
 
 <div class="main-container py-2 m-auto px-3">
 
@@ -281,10 +288,13 @@
             <button id="modal-unconfirm-toggle" type="button"
                     class="btn btn-warning btn-sm d-none"
                     onclick="toggleSubForm('unconfirm')">↩️ Unconfirm</button>
-            <form id="modal-delete-form" method="POST" action="" style="display:inline;">
-                <button type="submit" class="btn btn-danger btn-sm"
-                        onclick="return confirm('Delete this order? Cannot be undone.')">🗑 Delete</button>
+            <form id="modal-delete-form" method="POST" action="" style="display:inline;"
+                onsubmit="if(!confirm('Delete this order? Cannot be undone.')) return false; showLoader('Deleting order…'); return true;">
+                <button type="submit" class="btn btn-outline-danger btn-sm">🗑 Delete</button>
             </form>
+            <small id="modal-lock-note" class="text-muted w-100 text-end" style="display:none; font-size:.72rem;">
+                🔒 Editing/deleting locked in Settings
+            </small>
         </div>
 
         <!-- Confirm sub-form -->
@@ -315,10 +325,15 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
+const LOCK_EDIT   = {{ 'true' if lock_confirmed_edit   else 'false' }};
+const LOCK_DELETE = {{ 'true' if lock_confirmed_delete else 'false' }};
 // ── Filter state ──
 const F = { status:'all', method:'all', dateFrom:'', dateTo:'', search:'' };
 function toISO(d){ return d.toISOString().split('T')[0]; }
-
+function showLoader(msg) {
+    document.getElementById('loaderText').textContent = msg || 'Processing…';
+    document.getElementById('pageLoader').style.display = 'flex';
+}
 (function(){
     const t=toISO(new Date());
     F.dateFrom=F.dateTo=t;
@@ -515,14 +530,38 @@ $(document).off('click','.payment-row').on('click','.payment-row',function(){
     });
 
     // Buttons
-    document.getElementById('modal-edit-btn').href = `/edit-order/${id}`;
-    document.getElementById('modal-delete-form').action = `/delete-order/${id}`;
+    const editBtn = document.getElementById('modal-edit-btn');
+    if (LOCK_EDIT && status === 'Confirmed') {
+        editBtn.removeAttribute('href');
+        editBtn.classList.add('disabled');
+        editBtn.title = 'Locked — confirmed orders cannot be edited';
+    } else {
+        editBtn.href = `/edit-order/${id}`;
+        editBtn.classList.remove('disabled');
+        editBtn.title = '';
+    }
+    const delForm = document.getElementById('modal-delete-form');
+    const delBtn  = delForm.querySelector('button[type="submit"]');
+    delForm.action = `/delete-order/${id}`;
+    if (LOCK_DELETE && status === 'Confirmed') {
+        delBtn.disabled = true;
+        delBtn.title = 'Locked — confirmed orders cannot be deleted';
+    } else {
+        delBtn.disabled = false;
+        delBtn.title = '';
+    }
 
     // Resend STK
     const resendBtn = document.getElementById('modal-resend-btn');
     const showResend = (method==='M-Pesa'||method==='Split') && status==='Pending';
     resendBtn.classList.toggle('d-none', !showResend);
-    resendBtn.href = `/resend-stk/${id}`;
+    resendBtn.href = '#';
+    resendBtn.onclick = function(e) {
+        e.preventDefault();
+        if(!confirm('Resend STK Push to ' + phone + '?')) return;
+        showLoader('Resending STK Push…');
+        window.location.href = `/resend-stk/${id}`;
+    };
 
     // Manual confirm
     const confirmToggle = document.getElementById('modal-confirm-toggle');
@@ -533,7 +572,12 @@ $(document).off('click','.payment-row').on('click','.payment-row',function(){
     // Unconfirm
     const unconfirmToggle = document.getElementById('modal-unconfirm-toggle');
     const unconfirmForm   = document.getElementById('unconfirm-form');
-    unconfirmToggle.classList.toggle('d-none', status !== 'Confirmed');
+    unconfirmToggle.classList.toggle('d-none', status !== 'Confirmed' || LOCK_EDIT);
+    if (LOCK_EDIT && status === 'Confirmed') {
+        // show a locked indicator instead
+        const lockNote = document.getElementById('modal-lock-note');
+        if(lockNote) lockNote.style.display = '';
+    }
     unconfirmForm.action = `/unconfirm/${id}`;
 
     // Save customer button

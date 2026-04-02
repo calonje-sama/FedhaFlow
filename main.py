@@ -227,10 +227,15 @@ def inject_globals():
     try:
         mode     = get_mpesa_mode()
         accounts = get_active_payment_accounts()
+        lock_edit   = get_setting('lock_confirmed_orders',  'false') == 'true'
+        lock_delete = get_setting('lock_confirmed_deletes', 'false') == 'true'
     except Exception:
-        mode     = 'sandbox'
-        accounts = []
-    return dict(mpesa_mode=mode, payment_accounts=accounts)
+        mode        = 'sandbox'
+        accounts    = []
+        lock_edit   = False
+        lock_delete = False
+    return dict(mpesa_mode=mode, payment_accounts=accounts,
+                lock_confirmed_edit=lock_edit, lock_confirmed_delete=lock_delete)
 
 
 # ─────────────────────────────────────────
@@ -752,9 +757,15 @@ def checkout():
 
 @app.route('/edit-order/<int:payment_id>')
 def edit_order(payment_id):
-    payment    = Payment.query.options(
+    payment = Payment.query.options(
         joinedload(Payment.order_items).joinedload(OrderItem.menu_item)
     ).get_or_404(payment_id)
+
+    # Lock check
+    if payment.status == "Confirmed" and get_setting('lock_confirmed_orders', 'false') == 'true':
+        flash("Editing confirmed orders is locked. Change this in Settings → Order Settings.", "warning")
+        return redirect(url_for('dashboard'))
+
     menu_items = MenuItem.query.filter_by(active=True).all()
     qty_map    = {oi.menu_item_id: oi.quantity for oi in payment.order_items}
     return render_template("menu.html", menu_items=menu_items,
@@ -802,19 +813,34 @@ def update_order(payment_id):
             db.session.add(OrderItem(payment_id=payment.id, menu_item_id=item.id,
                                      quantity=qty, price=item.price))
 
+    skip_stk = request.form.get('skip_stk', '0') == '1'
+    was_confirmed = payment.status == "Confirmed"
+
+    # For already-confirmed (orphan) payments: validate items don't exceed paid amount
+    if was_confirmed and total > payment.amount:
+        db.session.rollback()
+        flash(f"Items total (KES {format_currency(total)}) exceeds paid amount (KES {format_currency(payment.amount)}). Reduce items or add cash portion.", "danger")
+        return redirect(url_for('edit_order', payment_id=payment_id))
+
     payment.phone        = phone
-    payment.amount       = total
-    payment.mpesa_amount = mpesa_amount
-    payment.cash_amount  = cash_amount
+    # Only update amount if NOT a confirmed orphan (preserve original paid amount)
+    if not was_confirmed:
+        payment.amount       = total
+        payment.mpesa_amount = mpesa_amount
+        payment.cash_amount  = cash_amount
     payment.method       = method
     payment.pay_channel  = "Till" if method in ("M-Pesa", "Split") else None
-    payment.status       = "Pending" if method in ("M-Pesa", "Split") else "Confirmed"
+    # Keep confirmed status if it was already confirmed (orphan adding items)
+    if not was_confirmed:
+        payment.status = "Pending" if method in ("M-Pesa", "Split") else "Confirmed"
     db.session.commit()
     notify_payment_update(payment)
 
-    if method in ("M-Pesa", "Split"):
+    if method in ("M-Pesa", "Split") and not skip_stk and not was_confirmed:
         stk_amt = mpesa_amount if method == "Split" else total
-        stk = initiate_stk_push(phone, stk_amt)
+        stk = initiate_stk_push(phone, stk_amt,
+                                 account_id=payment.payment_account_id,
+                                 order_id=payment.id)
         if stk.get("success"):
             payment.checkout_request_id = stk["CheckoutRequestID"]
             db.session.commit()
@@ -849,6 +875,10 @@ def delete_order(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment:
         flash("Order not found.", "danger"); return redirect(url_for('dashboard'))
+    # Lock check for confirmed orders
+    if payment.status == "Confirmed" and get_setting('lock_confirmed_deletes', 'false') == 'true':
+        flash("Deleting confirmed orders is locked. Change this in Settings → Order Settings.", "warning")
+        return redirect(url_for('dashboard'))
     OrderItem.query.filter_by(payment_id=payment_id).delete()
     db.session.delete(payment)
     db.session.commit()
@@ -936,7 +966,7 @@ def c2b_confirmation():
         amount    = float(data.get("TransAmount", 0))
         phone     = str(data.get("MSISDN", ""))
         receipt   = data.get("TransID", "")
-        bill_ref  = str(data.get("BillRefNumber", "")).strip()  # e.g. "Order42"
+        bill_ref  = str(data.get("BillRefNumber", "")).strip()
 
         if phone.startswith("0") and len(phone) == 10:
             phone = "254" + phone[1:]
@@ -960,17 +990,19 @@ def c2b_confirmation():
             except (ValueError, AttributeError):
                 pass
 
-        # ── Strategy 2: match by phone + amount (till or paybill fallback) ──
+        # ── Strategy 2: match OLDEST pending by phone + amount (fix: .first() not .all()) ──
         if not confirmed_any:
-            # Full M-Pesa orders
-            matched = Payment.query.filter_by(
-                phone=phone, amount=amount, method="M-Pesa", status="Pending").all()
-            # Split orders — match by mpesa_amount
-            split_matched = Payment.query.filter_by(
-                phone=phone, method="Split", status="Pending"
-            ).filter(Payment.mpesa_amount == amount).all()
+            payment = Payment.query.filter_by(
+                phone=phone, amount=amount, method="M-Pesa", status="Pending"
+            ).order_by(Payment.created_at.asc()).first()
 
-            for payment in matched + split_matched:
+            if not payment:
+                # Also check Split orders where mpesa_amount matches
+                payment = Payment.query.filter_by(
+                    phone=phone, method="Split", status="Pending"
+                ).filter(Payment.mpesa_amount == amount).order_by(Payment.created_at.asc()).first()
+
+            if payment:
                 payment.status        = "Confirmed"
                 payment.pay_channel   = "Phone"
                 payment.mpesa_receipt = receipt
@@ -978,26 +1010,46 @@ def c2b_confirmation():
                 db.session.commit(); db.session.refresh(payment)
                 notify_payment_update(payment)
                 confirmed_any = True
+                print(f"C2B matched by phone+amount: Order {payment.id}")
 
-        # ── Strategy 3 (till only): match by amount alone if still unmatched ──
-        # Only for till accounts — paybill customers MUST enter a reference
+        # ── Strategy 3: match OLDEST pending by amount only (any phone, till fallback) ──
         if not confirmed_any:
-            # Find pending orders with this exact amount (any phone)
-            candidates = Payment.query.filter_by(
-                amount=amount, status="Pending", method="M-Pesa").all()
-            # Also check Split mpesa_amount
-            split_candidates = Payment.query.filter_by(
-                status="Pending", method="Split"
-            ).filter(Payment.mpesa_amount == amount).all()
-            for payment in candidates + split_candidates:
+            payment = Payment.query.filter_by(
+                amount=amount, status="Pending", method="M-Pesa"
+            ).order_by(Payment.created_at.asc()).first()
+
+            if not payment:
+                payment = Payment.query.filter_by(
+                    status="Pending", method="Split"
+                ).filter(Payment.mpesa_amount == amount).order_by(Payment.created_at.asc()).first()
+
+            if payment:
                 payment.status        = "Confirmed"
                 payment.pay_channel   = "Phone"
                 payment.mpesa_receipt = receipt
                 payment.notes         = f"Auto-matched by amount — paid via {phone}"
                 db.session.commit(); db.session.refresh(payment)
                 notify_payment_update(payment)
+                confirmed_any = True
                 print(f"C2B amount-only match: Order {payment.id}")
-                break  # only match one to avoid false positives
+
+        # ── Strategy 4: no match — create orphan confirmed payment ──
+        # Payment arrived but no pending order exists — show it on dashboard so cashier can add items
+        if not confirmed_any:
+            orphan = Payment(
+                phone         = phone,
+                amount        = amount,
+                method        = "M-Pesa",
+                pay_channel   = "Phone",
+                mpesa_receipt = receipt,
+                status        = "Confirmed",
+                notes         = f"Payment received without order — KES {amount} from {phone}. Add items via Edit."
+            )
+            db.session.add(orphan)
+            db.session.commit()
+            db.session.refresh(orphan)
+            notify_payment_update(orphan)
+            print(f"C2B created orphan payment #{orphan.id} for {phone} KES {amount}")
 
     except Exception as e:
         print("C2B error:", e)
@@ -1331,6 +1383,8 @@ def seed_settings():
         'summary_whatsapp_numbers': '',
         'summary_email_addresses':  '',
         'callmebot_api_keys':       '{}',
+        'lock_confirmed_orders':    'false',
+        'lock_confirmed_deletes':   'false',
     }
     for k, v in defaults.items():
         if not db.session.get(AppSetting, k):

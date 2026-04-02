@@ -244,6 +244,17 @@
                         </span>
                     </label>
                 </div>
+                <div class="form-check form-switch mt-3">
+                    <input class="form-check-input" type="checkbox" id="lockDeleteToggle"
+                        {% if cfg.get('lock_confirmed_deletes') == 'true' %}checked{% endif %}
+                        onchange="saveSingleSetting('lock_confirmed_deletes', this.checked?'true':'false')">
+                    <label class="form-check-label" for="lockDeleteToggle">
+                        <strong>Lock confirmed orders from deletion</strong>
+                        <span class="text-muted d-block" style="font-size:.8rem;">
+                            When on, confirmed orders cannot be deleted from the dashboard.
+                        </span>
+                    </label>
+                </div>
             </div>
         </div>
     </div>
